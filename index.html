@@ -1435,9 +1435,14 @@ function stepSim() {
         if (c === E.SNOW && (frame & 1) === 0) continue;
         const perpX = gvx ? 0 : 1, perpY = gvx ? 1 : 0;
         const nx = x + gvx, ny = y + gvy;
+        if (horizontal && Math.random()<0.09) {
+          const rollY=y+(Math.random()<0.5?-1:1);
+          if(rollY>=0&&rollY<H&&grid[rollY*W+x]===E.EMPTY){swapCells(i,rollY*W+x);continue;}
+        }
         if (nx >= 0 && nx < W && ny >= 0 && ny < H) {
           const below = ny * W + nx, bc = grid[below];
-          if (bc === E.EMPTY || (densityAt(c,i) > densityAt(bc,below) && (isLiquidAt(bc,below) || isGasAt(bc,below)))) { swapCells(i, below); continue; }
+          const shearSkip = horizontal && Math.random() < 0.38;
+          if (!shearSkip && (bc === E.EMPTY || (densityAt(c,i) > densityAt(bc,below) && (isLiquidAt(bc,below) || isGasAt(bc,below))))) { swapCells(i, below); continue; }
           const sign = Math.random() < 0.5 ? -1 : 1;
           for (const side of [sign,-sign]) {
             const tx = nx + perpX * side, ty = ny + perpY * side;
@@ -2309,34 +2314,65 @@ function orientationGravity() {
 }
 let motionAccessRequested = false;
 let motionSensorReady = false;
+function applyDeviceMotion(e) {
+  const a=e.accelerationIncludingGravity;
+  if(!a || a.x==null || a.y==null) return;
+  const angle0=(screen.orientation && typeof screen.orientation.angle==='number')?screen.orientation.angle:(window.orientation||0);
+  const angle=((angle0%360)+360)%360;
+  let gx,gy;
+  // iOS Safari's accelerometer axes are reversed on X/Y; rotate the raw
+  // sensor vector into the currently visible screen axes (portrait/landscape).
+  if(angle<45 || angle>=315) { gx=-a.x; gy=a.y; }             // portrait
+  else if(angle>=45 && angle<135) { gx=a.y; gy=a.x; }         // landscape clockwise
+  else if(angle>=135 && angle<225) { gx=-a.y; gy=-a.x; }      // upside-down portrait
+  else { gx=a.x; gy=-a.y; }                                   // landscape counter-clockwise
+  if(Math.abs(gx)>4.0 && Math.abs(gx)>Math.abs(gy)*1.04) gravityDir=gx>0?2:-2;
+  else if(Math.abs(gy)>4.0) gravityDir=gy>0?1:-1;
+}
 function applyDeviceTilt(e) {
-  if (e.beta == null || e.gamma == null) return;
-  const gx = Math.sin(e.gamma * Math.PI / 180);
-  const gy = Math.sin(e.beta * Math.PI / 180);
-  if (Math.abs(gx) > 0.58 && Math.abs(gx) > Math.abs(gy) * 0.88) gravityDir = gx > 0 ? 2 : -2;
-  else if (Math.abs(gy) > 0.58) gravityDir = gy > 0 ? 1 : -1;
+  if (e.beta==null || e.gamma==null) return;
+  const angle0=(screen.orientation && typeof screen.orientation.angle==='number')?screen.orientation.angle:(window.orientation||0);
+  const angle=((angle0%360)+360)%360;
+  let gx=Math.sin(e.gamma*Math.PI/180), gy=Math.sin(e.beta*Math.PI/180);
+  if(angle>=45&&angle<135){const t=gx;gx=gy;gy=-t;}
+  else if(angle>=135&&angle<225){gx=-gx;gy=-gy;}
+  else if(angle>=225&&angle<315){const t=gx;gx=-gy;gy=t;}
+  gx=-gx;
+  if(Math.abs(gx)>0.58&&Math.abs(gx)>Math.abs(gy)*0.88)gravityDir=gx>0?2:-2;
+  else if(Math.abs(gy)>0.58)gravityDir=gy>0?1:-1;
 }
 function startMotionSensor() {
   if (motionSensorReady) { showToast('📱 Наклон уже включён'); return; }
-  if (motionAccessRequested) { showToast('Если окно не появилось: Настройки iPhone → Safari → Доступ к движению и ориентации'); return; }
-  motionAccessRequested = true;
-  const DO = window.DeviceOrientationEvent;
-  const DM = window.DeviceMotionEvent;
-  const attach = () => {
-    window.addEventListener('deviceorientation', applyDeviceTilt, { passive:true });
-    motionSensorReady = true;
-    const b=document.getElementById('btnTilt'); if(b){b.classList.add('active');b.innerHTML='📱<span>Наклон включён</span>';}
-    showToast('📱 Наклоняй телефон — песок потечёт вслед');
+  const DM=window.DeviceMotionEvent, DO=window.DeviceOrientationEvent;
+  const attachMotion=()=>{
+    window.addEventListener('devicemotion',applyDeviceMotion,{passive:true});
+    motionSensorReady=true; motionAccessRequested=true;
+    const b=document.getElementById('btnTilt');if(b){b.classList.add('active');b.innerHTML='📱<span>Наклон включён</span>';}
+    showToast('📱 Наклон включён — проверь влево и вправо');
   };
-  const asks=[];
-  try { if(DO && typeof DO.requestPermission==='function') asks.push(DO.requestPermission()); } catch(e) { asks.push(Promise.reject(e)); }
-  try { if(DM && typeof DM.requestPermission==='function') asks.push(DM.requestPermission()); } catch(e) { asks.push(Promise.reject(e)); }
-  if (!DO && !DM) { showToast('Браузер не поддерживает датчик наклона'); return; }
-  if (!asks.length) { attach(); return; }
-  Promise.all(asks).then(states => {
-    if(states.every(state => state==='granted')) attach();
-    else showToast('Разреши Motion & Orientation в настройках Safari');
-  }).catch(() => showToast('Включи «Доступ к движению и ориентации» в настройках Safari'));
+  const attachOrientationFallback=()=>{
+    window.addEventListener('deviceorientation',applyDeviceTilt,{passive:true});
+    motionSensorReady=true; motionAccessRequested=true;
+    const b=document.getElementById('btnTilt');if(b){b.classList.add('active');b.innerHTML='📱<span>Наклон включён</span>';}
+    showToast('📱 Наклон включён');
+  };
+  if(DM && typeof DM.requestPermission==='function') {
+    try {
+      DM.requestPermission().then(state=>{
+        if(state==='granted') attachMotion();
+        else {motionAccessRequested=false;showToast('iPhone отклонил доступ к датчику движения');}
+      }).catch(()=>{motionAccessRequested=false;showToast('Нажми ещё раз в Safari и разреши датчик движения');});
+    } catch(err) {motionAccessRequested=false;showToast('Открой игру в Safari и запроси наклон ещё раз');}
+    return;
+  }
+  if(DM) {attachMotion();return;}
+  if(DO && typeof DO.requestPermission==='function') {
+    try { DO.requestPermission().then(state=>state==='granted'?attachOrientationFallback():showToast('Разреши наклон в Safari')).catch(()=>showToast('Не удалось запросить наклон')); }
+    catch(err) {showToast('Открой игру напрямую в Safari');}
+    return;
+  }
+  if(DO) attachOrientationFallback();
+  else showToast('Браузер не поддерживает датчик наклона');
 }
 document.getElementById('btnTilt').onclick = startMotionSensor;
 document.getElementById('btnMix').onclick = function() {
