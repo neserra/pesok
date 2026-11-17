@@ -2339,7 +2339,8 @@ function applyDeviceMotion(e) {
   else if(angle>=45 && angle<135) { gx=a.y; gy=a.x; }         // landscape clockwise
   else if(angle>=135 && angle<225) { gx=-a.y; gy=-a.x; }      // upside-down portrait
   else { gx=a.x; gy=-a.y; }                                   // landscape counter-clockwise
-  setGravityFromTilt(gx,gy);
+  // accelerationIncludingGravity measures support force, opposite to gravity.
+  setGravityFromTilt(-gx,-gy);
 }
 function applyDeviceTilt(e) {
   if (e.beta==null || e.gamma==null) return;
@@ -2356,7 +2357,7 @@ function startMotionSensor() {
   if (motionSensorReady) {
     window.removeEventListener('devicemotion',applyDeviceMotion);
     window.removeEventListener('deviceorientation',applyDeviceTilt);
-    motionSensorReady=false; motionAccessRequested=false; resetTiltFilter(); orientationGravity();
+    motionSensorReady=false; motionAccessRequested=false; resetTiltFilter(); gravityDir=1;
     const b=document.getElementById('btnTilt');if(b){b.classList.remove('active');b.innerHTML='📱<span>Включить наклон</span>'; }
     showToast('Наклон выключен; обычная гравитация'); return;
   }
@@ -2406,7 +2407,6 @@ function onViewportChange() {
   const dpr = Math.min(2, window.devicePixelRatio || 1);
   oCanvas.width = Math.round(rect.width*dpr); oCanvas.height = Math.round(rect.height*dpr);
   oCtx.setTransform(dpr,0,0,dpr,0,0);
-  if (!motionSensorReady) orientationGravity();
   clampPan(); applyViewTransform();
 }
 window.addEventListener('resize', onViewportChange, {passive:true});
@@ -2434,7 +2434,7 @@ function loop() {
 }
 
 initDimensions();
-orientationGravity();
+gravityDir=1;
 renderPalette();
 updateSelectedHUD();
 clearGrid(); // Start with a completely empty canvas; scenes are optional.
