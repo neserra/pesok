@@ -1,4 +1,4 @@
-const CACHE = 'sandbox-ios-v6';
+const CACHE = 'sandbox-ios-v7';
 const FILES = ['./', './index.html', './manifest.json', './icon.svg'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(FILES)).then(() => self.skipWaiting()));

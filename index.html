@@ -1974,7 +1974,6 @@ window.addEventListener('keydown', e => {
 canvas.addEventListener('pointerdown', e => {
   e.preventDefault();
   SFX.unlock();
-  startMotionSensor();
   closePopovers();
   canvas.setPointerCapture(e.pointerId);
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -2314,6 +2313,20 @@ function orientationGravity() {
 }
 let motionAccessRequested = false;
 let motionSensorReady = false;
+let filtGX=0, filtGY=0, tiltCandidate=0, tiltSamples=0;
+function resetTiltFilter(){filtGX=0;filtGY=0;tiltCandidate=0;tiltSamples=0;}
+function setGravityFromTilt(gx,gy) {
+  filtGX=filtGX*0.78+gx*0.22; filtGY=filtGY*0.78+gy*0.22;
+  const ax=Math.abs(filtGX), ay=Math.abs(filtGY);
+  let candidate=0;
+  // Require a deliberate ~40 degree lean and a clear dominant axis; ignore hand jitter.
+  if(ax>6.3 && ax>ay*1.22) candidate=filtGX>0?2:-2;
+  else if(ay>6.3 && ay>ax*1.22) candidate=filtGY>0?1:-1;
+  if(!candidate){tiltCandidate=0;tiltSamples=0;return;}
+  if(candidate===tiltCandidate) tiltSamples++;
+  else {tiltCandidate=candidate;tiltSamples=1;}
+  if(tiltSamples>=5) gravityDir=candidate;
+}
 function applyDeviceMotion(e) {
   const a=e.accelerationIncludingGravity;
   if(!a || a.x==null || a.y==null) return;
@@ -2326,8 +2339,7 @@ function applyDeviceMotion(e) {
   else if(angle>=45 && angle<135) { gx=a.y; gy=a.x; }         // landscape clockwise
   else if(angle>=135 && angle<225) { gx=-a.y; gy=-a.x; }      // upside-down portrait
   else { gx=a.x; gy=-a.y; }                                   // landscape counter-clockwise
-  if(Math.abs(gx)>4.0 && Math.abs(gx)>Math.abs(gy)*1.04) gravityDir=gx>0?2:-2;
-  else if(Math.abs(gy)>4.0) gravityDir=gy>0?1:-1;
+  setGravityFromTilt(gx,gy);
 }
 function applyDeviceTilt(e) {
   if (e.beta==null || e.gamma==null) return;
@@ -2338,22 +2350,28 @@ function applyDeviceTilt(e) {
   else if(angle>=135&&angle<225){gx=-gx;gy=-gy;}
   else if(angle>=225&&angle<315){const t=gx;gx=-gy;gy=t;}
   gx=-gx;
-  if(Math.abs(gx)>0.58&&Math.abs(gx)>Math.abs(gy)*0.88)gravityDir=gx>0?2:-2;
-  else if(Math.abs(gy)>0.58)gravityDir=gy>0?1:-1;
+  setGravityFromTilt(gx*9.8,gy*9.8);
 }
 function startMotionSensor() {
-  if (motionSensorReady) { showToast('📱 Наклон уже включён'); return; }
+  if (motionSensorReady) {
+    window.removeEventListener('devicemotion',applyDeviceMotion);
+    window.removeEventListener('deviceorientation',applyDeviceTilt);
+    motionSensorReady=false; motionAccessRequested=false; resetTiltFilter(); orientationGravity();
+    const b=document.getElementById('btnTilt');if(b){b.classList.remove('active');b.innerHTML='📱<span>Включить наклон</span>'; }
+    showToast('Наклон выключен; обычная гравитация'); return;
+  }
   const DM=window.DeviceMotionEvent, DO=window.DeviceOrientationEvent;
   const attachMotion=()=>{
+    resetTiltFilter();
     window.addEventListener('devicemotion',applyDeviceMotion,{passive:true});
     motionSensorReady=true; motionAccessRequested=true;
-    const b=document.getElementById('btnTilt');if(b){b.classList.add('active');b.innerHTML='📱<span>Наклон включён</span>';}
+    const b=document.getElementById('btnTilt');if(b){b.classList.add('active');b.innerHTML='📱<span>Отключить наклон</span>';}
     showToast('📱 Наклон включён — проверь влево и вправо');
   };
   const attachOrientationFallback=()=>{
     window.addEventListener('deviceorientation',applyDeviceTilt,{passive:true});
     motionSensorReady=true; motionAccessRequested=true;
-    const b=document.getElementById('btnTilt');if(b){b.classList.add('active');b.innerHTML='📱<span>Наклон включён</span>';}
+    const b=document.getElementById('btnTilt');if(b){b.classList.add('active');b.innerHTML='📱<span>Отключить наклон</span>';}
     showToast('📱 Наклон включён');
   };
   if(DM && typeof DM.requestPermission==='function') {
