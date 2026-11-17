@@ -1,0 +1,2261 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Песочница">
+<meta name="theme-color" content="#000000">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Crect width='180' height='180' rx='36' fill='%2304060d'/%3E%3Cpolygon points='20,160 90,72 160,160' fill='%23ffd000'/%3E%3Cpath d='M90 18 L90 70' stroke='%23ffd000' stroke-width='8' stroke-dasharray='6 6'/%3E%3Crect x='24' y='138' width='52' height='22' fill='%230066ff' opacity='0.85'/%3E%3Cpath d='M120 110 Q135 80 148 110' fill='none' stroke='%2322c55e' stroke-width='9' stroke-linecap='round'/%3E%3C/svg%3E">
+<title>Песочница — sand:box</title>
+<style>
+:root {
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --bar-bg: rgba(18, 20, 26, 0.94);
+  --tile-sz: 54px;
+}
+
+* {
+  margin: 0; padding: 0; box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none; user-select: none;
+}
+
+html, body {
+  width: 100%; height: 100%; overflow: hidden;
+  background: #000;
+  color: #f1f5f9;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', Roboto, sans-serif;
+  touch-action: none;
+}
+
+#app {
+  width: 100%; height: 100dvh;
+  display: flex; flex-direction: column;
+  background: #000;
+  position: relative;
+  overflow: hidden;
+}
+
+/* CLEAN, COMPACT TOP BAR */
+.topbar {
+  padding: calc(7px + var(--sat)) 11px 7px;
+  min-height: calc(55px + var(--sat));
+  background: linear-gradient(180deg,#1a1d25 0%,#111319 100%);
+  border-bottom:1px solid rgba(255,255,255,.12);
+  display:flex; align-items:center; justify-content:space-between; gap:9px;
+  z-index:20; flex-shrink:0; box-shadow:0 4px 16px rgba(0,0,0,.3);
+}
+.tb-brand { display:flex; align-items:center; gap:9px; min-width:0; }
+.tb-logo { width:34px;height:34px;flex:0 0 34px;border-radius:11px;display:grid;place-items:center;
+  background:linear-gradient(145deg,#ffd54a,#f28b00);color:#17130a;font-size:20px;
+  box-shadow:inset 0 1px 0 #fff8,0 2px 8px #f59e0b44; }
+.tb-brand-copy { display:flex;flex-direction:column;gap:2px; }
+.tb-brand-copy strong { font-size:12px;letter-spacing:1px;line-height:1.1;white-space:nowrap; }
+.tb-brand-copy span { color:#8791a2;font-size:9px;font-weight:700;letter-spacing:.45px;white-space:nowrap; }
+.tb-group { display:flex;align-items:center;gap:5px; }
+.tb-btn {
+  height:39px;min-width:39px;padding:0 8px;border-radius:11px;
+  border:1px solid rgba(255,255,255,.11);background:rgba(255,255,255,.07);color:#eef2f8;
+  font-size:16px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:5px;
+  cursor:pointer;transition:background .12s,transform .08s,border-color .12s;white-space:nowrap;
+}
+.tb-btn:active { transform:scale(.94); }
+.tb-btn.active { background:#f59e0b;color:#111;border-color:#fbbf24; }
+.tb-btn.heat-on { background:linear-gradient(135deg,#ef4444,#f59e0b);color:#fff;border-color:#fde047; }
+.tb-btn .lbl { font-size:10px;font-weight:800; }
+#btnPlay { background:linear-gradient(145deg,#f9b52c,#e88a00);color:#17130a;border-color:#ffce61; }
+#btnMenu { font-size:21px;letter-spacing:1px; }
+@media (max-width:370px) {
+  .tb-brand-copy span { display:none; }
+  .topbar { padding-left:7px;padding-right:7px;gap:5px; }
+  .tb-group { gap:4px; }
+  .tb-btn { min-width:36px;height:37px;padding:0 6px; }
+}
+
+/* CANVAS STAGE */
+.stage-wrap {
+  flex: 1; position: relative; min-height: 0;
+  background: #02030a; overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+}
+
+#simCanvas {
+  display: block;
+  width: 100%; height: 100%;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  touch-action: none;
+  transform-origin: 0 0;
+}
+
+#overlayCanvas {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  z-index: 5;
+}
+
+/* HUD PILLS OVER CANVAS */
+.hud-pill {
+  position: absolute; top: 8px; left: 8px; z-index: 12;
+  padding: 5px 10px; border-radius: 99px;
+  background: rgba(12, 14, 20, 0.82);
+  border: 1px solid rgba(255,255,255,0.14);
+  font-size: 12px; font-weight: 800; color: #fff;
+  display: flex; align-items: center; gap: 7px;
+  pointer-events: none; backdrop-filter: blur(4px);
+}
+.hud-swatch { width: 11px; height: 11px; border-radius: 3px; border: 1px solid rgba(255,255,255,0.5); }
+.hud-desc { font-size: 10.5px; color: #94a3b8; font-weight: 600; }
+
+.hud-right {
+  position: absolute; top: 8px; right: 8px; z-index: 12;
+  display: flex; gap: 5px;
+}
+.mini-pill {
+  padding: 4px 8px; border-radius: 8px;
+  background: rgba(12, 14, 20, 0.78);
+  border: 1px solid rgba(255,255,255,0.12);
+  font-size: 10.5px; font-weight: 700; color: #cbd5e1;
+  pointer-events: auto; cursor: pointer;
+}
+
+/* POPOVER PANEL (BRUSH / SCENES / SETTINGS) */
+.popover {
+  position: absolute; top: calc(62px + var(--sat)); left: 8px; right: 8px;
+  max-width: 380px; margin: 0 auto; z-index: 40;
+  background: rgba(20, 23, 31, 0.97);
+  border: 1px solid rgba(255,255,255,0.16);
+  border-radius: 16px; padding: 13px;
+  box-shadow: 0 18px 50px rgba(0,0,0,0.85);
+  display: none; flex-direction: column; gap: 11px;
+  max-height: calc(100dvh - 145px - var(--sat) - var(--sab)); overflow-y: auto;
+  backdrop-filter: blur(10px);
+}
+.popover.open { display: flex; }
+.pop-head { display: flex; align-items: center; justify-content: space-between; font-size: 14px; font-weight: 800; }
+.pop-close {
+  width: 28px; height: 28px; border-radius: 8px; border: none;
+  background: rgba(255,255,255,0.1); color: #fff; font-size: 14px; cursor: pointer;
+}
+
+.row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.seg-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.seg-btn {
+  padding: 8px 4px; border-radius: 9px; border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.06); color: #e2e8f0;
+  font-size: 11.5px; font-weight: 700; cursor: pointer; text-align: center;
+}
+.seg-btn.active { background: #f59e0b; color: #111; border-color: #fbbf24; }
+
+input[type=range] {
+  width: 100%; accent-color: #f59e0b; height: 26px;
+}
+
+.scene-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.scene-btn {
+  padding: 9px 10px; border-radius: 11px;
+  background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12);
+  color: #fff; text-align: left; cursor: pointer;
+  display: flex; flex-direction: column; gap: 2px;
+}
+.scene-btn:active { background: rgba(245,158,11,0.22); }
+.scene-btn strong { font-size: 12px; }
+.scene-btn span { font-size: 10px; color: #94a3b8; }
+
+
+.menu-grid { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px; }
+.menu-action { min-height:61px;padding:8px 4px;border-radius:12px;border:1px solid rgba(255,255,255,.1);
+  background:rgba(255,255,255,.055);color:#f1f5f9;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:4px;font-size:19px;cursor:pointer; }
+.menu-action span { font-size:10px;font-weight:750;color:#cbd5e1; }
+.menu-action.active { background:rgba(245,158,11,.2);border-color:rgba(245,158,11,.55); }
+.menu-action.danger { color:#fca5a5; }
+.menu-action:active { transform:scale(.97); }
+
+/* CATEGORY STRIP */
+.cat-strip {
+  display: flex; align-items: center; gap: 4px;
+  padding: 5px 6px 4px;
+  background: #12141a;
+  border-top: 1px solid rgba(255,255,255,0.1);
+  overflow-x: auto; scrollbar-width: none;
+  flex-shrink: 0;
+}
+.cat-strip::-webkit-scrollbar { display: none; }
+.cat-chip {
+  padding: 4px 9px; border-radius: 7px; border: none;
+  background: rgba(255,255,255,0.07); color: #cbd5e1;
+  font-size: 11px; font-weight: 800; white-space: nowrap; cursor: pointer;
+}
+.cat-chip.active { background: #f59e0b; color: #111; }
+
+/* ICONIC SMELLYMOO 2-ROW SQUARE TILE PALETTE */
+.palette-wrap {
+  background: #000;
+  border-top: 2px solid #000;
+  padding-bottom: var(--sab);
+  overflow-x: auto; overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  flex-shrink: 0;
+  touch-action: pan-x;
+}
+.palette-wrap::-webkit-scrollbar { display: none; }
+
+.palette-grid {
+  display: grid;
+  grid-template-rows: repeat(2, var(--tile-sz));
+  grid-auto-flow: column;
+  grid-auto-columns: var(--tile-sz);
+  gap: 0;
+  width: max-content;
+}
+
+.el-tile {
+  width: var(--tile-sz); height: var(--tile-sz);
+  border: 1.5px solid #000;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  position: relative; cursor: pointer;
+  padding: 2px;
+  transition: filter .1s;
+}
+.el-tile:active { filter: brightness(1.18); }
+.el-tile svg { width: 32px; height: 32px; display: block; pointer-events: none; }
+.el-tile .t-name {
+  font-size: 8.5px; font-weight: 900; color: #111;
+  line-height: 1; margin-top: 1px; max-width: 100%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  letter-spacing: -0.2px;
+}
+.el-tile.dark-txt .t-name { color: #fff; text-shadow: 0 1px 2px #000; }
+.el-tile.selected {
+  box-shadow: inset 0 0 0 3px #fff, inset 0 0 0 5px #000;
+  z-index: 3;
+}
+
+/* CONFIRM DIALOG */
+.toast {
+  position: fixed; bottom: calc(var(--tile-sz) * 2 + 46px + var(--sab));
+  left: 50%; transform: translateX(-50%) translateY(10px);
+  background: rgba(15,18,26,0.95); color: #fff;
+  border: 1px solid rgba(255,255,255,0.2);
+  padding: 7px 14px; border-radius: 99px;
+  font-size: 12px; font-weight: 800;
+  opacity: 0; pointer-events: none; transition: all .2s; z-index: 60;
+  white-space: nowrap;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+@media (min-width: 600px) {
+  :root { --tile-sz: 58px; }
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- TOP CONTROL BAR -->
+  <header class="topbar">
+    <div class="tb-brand"><div class="tb-logo">✺</div><div class="tb-brand-copy"><strong>ПЕСОЧНИЦА</strong><span>СИМУЛЯТОР МАТЕРИАЛОВ</span></div></div>
+    <div class="tb-group">
+      <button class="tb-btn" id="btnPlay" title="Пауза / Продолжить">⏸</button>
+      <button class="tb-btn" id="btnUndo" title="Отменить действие">↶</button>
+      <button class="tb-btn" id="btnMenu" title="Дополнительные инструменты">···</button>
+    </div>
+  </header>
+
+  <!-- EXTRA CONTROLS: kept out of the main bar to reduce clutter -->
+  <div class="popover" id="popMenu">
+    <div class="pop-head"><span>⚙ Инструменты</span><button class="pop-close" data-close="popMenu">✕</button></div>
+    <div class="menu-grid">
+      <button class="menu-action" id="btnSpeed" title="Скорость симуляции">⏩<span>Скорость 1×</span></button>
+      <button class="menu-action" id="btnLine" title="Рисование прямой линией">╱<span>Линия</span></button>
+      <button class="menu-action" id="btnHeat" title="Тепловизор">🌡<span>Тепловизор</span></button>
+      <button class="menu-action" id="btnScenes" title="Миры и сохранения">🌍<span>Миры и слоты</span></button>
+      <button class="menu-action" id="btnSound" title="Звуковые эффекты">🔊<span>Звук: вкл</span></button>
+      <button class="menu-action danger" id="btnClear" title="Очистить холст">⌫<span>Очистить</span></button>
+    </div>
+    <div style="font-size:10px;color:#8290a3;text-align:center">Нажми «Очистить» дважды для подтверждения</div>
+  </div>
+
+  <!-- SCENES & SAVE/LOAD POPOVER -->
+  <div class="popover" id="popScenes">
+    <div class="pop-head">
+      <span>💾 Готовые сцены и сохранения</span>
+      <button class="pop-close" data-close="popScenes">✕</button>
+    </div>
+    <div style="font-size:11px;color:#94a3b8;font-weight:700;text-transform:uppercase">Готовые миры</div>
+    <div class="scene-grid">
+      <button class="scene-btn" data-preset="classic"><strong>🧱 Классика sand:box</strong><span>4 дозатора, вёдра, огонь</span></button>
+      <button class="scene-btn" data-preset="volcano"><strong>🌋 Вулкан и озеро</strong><span>Лава, вода, пар, камень</span></button>
+      <button class="scene-btn" data-preset="bomb"><strong>💣 Детонатор C4</strong><span>Батарейка, провод, TNT</span></button>
+      <button class="scene-btn" data-preset="lab"><strong>🧪 Кислотная лаба</strong><span>Стекло, металл, кислота</span></button>
+    </div>
+    <div style="font-size:11px;color:#94a3b8;font-weight:700;text-transform:uppercase;margin-top:2px">Твои слоты (в памяти iPhone)</div>
+    <div id="saveSlots" style="display:flex;flex-direction:column;gap:6px"></div>
+  </div>
+
+  <!-- CANVAS AREA -->
+  <div class="stage-wrap" id="stageWrap">
+    <canvas id="simCanvas"></canvas>
+    <canvas id="overlayCanvas"></canvas>
+
+    <div class="hud-pill" id="hudEl">
+      <span class="hud-swatch" id="hudSwatch"></span>
+      <span id="hudName">Песок</span>
+      <span class="hud-desc" id="hudDesc">Сыпется, плавится в стекло</span>
+    </div>
+
+    <div class="hud-right">
+      <div class="mini-pill" id="btnResetZoom" style="display:none">🔍 100%</div>
+      <div class="mini-pill" id="hudTemp">22°C</div>
+    </div>
+  </div>
+
+  <!-- CATEGORY FILTER STRIP -->
+  <div class="cat-strip" id="catStrip">
+    <button class="cat-chip active" data-cat="all">Все (76)</button>
+    <button class="cat-chip" data-cat="tools">Инструм.</button>
+    <button class="cat-chip" data-cat="fire">Огонь</button>
+    <button class="cat-chip" data-cat="powder">Сыпучие</button>
+    <button class="cat-chip" data-cat="liquid">Жидкости</button>
+    <button class="cat-chip" data-cat="nature">Природа</button>
+    <button class="cat-chip" data-cat="solid">Стройка</button>
+    <button class="cat-chip" data-cat="mech">Механизмы</button>
+    <button class="cat-chip" data-cat="new">Новое</button>
+    <button class="cat-chip" data-cat="weather">Погода</button>
+  </div>
+
+  <!-- ICONIC 2-ROW COLORED SQUARE TILE PALETTE -->
+  <div class="palette-wrap" id="paletteWrap">
+    <div class="palette-grid" id="paletteGrid"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(() => {
+'use strict';
+
+/* ==================== ELEMENT IDS ==================== */
+const E = {
+  EMPTY:0,
+  SAND:1, WATER:2, OIL:3, SALT:4, SNOW:5, FIRE:6, LAVA:7, BRICK:8, STONE:9,
+  METAL:10, WOOD:11, GLASS:12, PLANT:13, SEED:14, GUNPOWDER:15, TNT:16, C4:17,
+  ACID:18, GAS:19, STEAM:20, SMOKE:21, ICE:22, CONCRETE:23, DIRT:24, SAWDUST:25,
+  ASH:26, MERCURY:27, NITROGEN:28, GASOLINE:29, NITRO:30, THERMITE:31, URANIUM:32,
+  PLASMA:33, FUSE:34, SULFUR:35, TOXIC:36, ALGAE:37, VIRUS:38, ANT:39, FISH:40,
+  SPONGE:41, VOID:42, CLONE:43, BATTERY:44, WIRE:45, HEATER:46, COOLER:47,
+  LED:48, FAN:49, VOLCANO:50, FIREWORK:51, FOAM:52, SALTWATER:53,
+  CLOUD:54, RAIN:55, OXYGEN:56, MOSS:57, WAX:58, RUBBER:59, CERAMIC:60, OBSIDIAN:61, CORAL:62, HONEY:63,
+  // Pseudo-tools (>= 100)
+  MUD:64, COPPER:65, COAL:66, CHARCOAL:67, BUBBLE:68, SALTPETER:69, STEEL:70, MAGNET:71, CLAY:72, GRAVEL:73,
+  TOOL_HEAT:101, TOOL_COOL:102, TOOL_SPARK:103
+};
+
+/* ==================== ELEMENT METADATA & TILE PALETTE ==================== */
+// Colors: packed ABGR helper for ImageData Uint32Array (little-endian)
+function packRGBA(r, g, b, a=255) {
+  return ((a & 255) << 24) | ((b & 255) << 16) | ((g & 255) << 8) | (r & 255);
+}
+
+// Element physics tables
+const DENSITY = new Int16Array(96);
+const FLAMMABLE = new Uint8Array(96); // 0=no, higher=easier to burn
+const CONDUCTIVE = new Uint8Array(96);
+const SOLID = new Uint8Array(96);
+const LIQUID = new Uint8Array(96);
+const POWDER = new Uint8Array(96);
+const GAS_T = new Uint8Array(96);
+
+function regPhys(id, type, density, flam=0, cond=0) {
+  DENSITY[id] = density;
+  FLAMMABLE[id] = flam;
+  CONDUCTIVE[id] = cond;
+  if (type === 'S') SOLID[id] = 1;
+  else if (type === 'L') LIQUID[id] = 1;
+  else if (type === 'P') POWDER[id] = 1;
+  else if (type === 'G') GAS_T[id] = 1;
+}
+
+regPhys(E.EMPTY,     'G', 0);
+regPhys(E.FIRE,      'G', -10);
+regPhys(E.PLASMA,    'G', -14);
+regPhys(E.GAS,       'G', -8, 95);
+regPhys(E.STEAM,     'G', -6);
+regPhys(E.SMOKE,     'G', -5);
+regPhys(E.TOXIC,     'G', -4);
+regPhys(E.FIREWORK,  'G', -12);
+
+regPhys(E.FOAM,      'L', 8);
+regPhys(E.GASOLINE,  'L', 11, 95);
+regPhys(E.OIL,       'L', 13, 65);
+regPhys(E.NITRO,     'L', 16, 100);
+regPhys(E.NITROGEN,  'L', 18);
+regPhys(E.WATER,     'L', 22);
+regPhys(E.SALTWATER, 'L', 25, 0, 1);
+regPhys(E.ACID,      'L', 26);
+regPhys(E.LAVA,      'L', 42);
+regPhys(E.MERCURY,   'L', 96, 0, 1);
+
+regPhys(E.SAWDUST,   'P', 15, 70);
+regPhys(E.SNOW,      'P', 19);
+regPhys(E.ASH,       'P', 28);
+regPhys(E.SEED,      'P', 40, 35);
+regPhys(E.SALT,      'P', 46);
+regPhys(E.SULFUR,    'P', 48, 80);
+regPhys(E.GUNPOWDER, 'P', 50, 95);
+regPhys(E.SAND,      'P', 55);
+regPhys(E.DIRT,      'P', 56);
+regPhys(E.CONCRETE,  'P', 62);
+regPhys(E.THERMITE,  'P', 68, 55);
+regPhys(E.URANIUM,   'P', 85, 0, 1);
+
+regPhys(E.BRICK,     'S', 100);
+regPhys(E.STONE,     'S', 100);
+regPhys(E.METAL,     'S', 100, 0, 1);
+regPhys(E.GLASS,     'S', 100);
+regPhys(E.WOOD,      'S', 100, 22);
+regPhys(E.ICE,       'S', 100);
+regPhys(E.PLANT,     'S', 100, 50);
+regPhys(E.ALGAE,     'S', 100, 30);
+regPhys(E.TNT,       'S', 100, 90);
+regPhys(E.C4,        'S', 100, 60, 1);
+regPhys(E.FUSE,      'S', 100, 88);
+regPhys(E.VIRUS,     'S', 100, 60);
+regPhys(E.SPONGE,    'S', 100, 35);
+regPhys(E.VOID,      'S', 100);
+regPhys(E.CLONE,     'S', 100);
+regPhys(E.BATTERY,   'S', 100, 0, 1);
+regPhys(E.WIRE,      'S', 100, 0, 1);
+regPhys(E.HEATER,    'S', 100, 0, 1);
+regPhys(E.COOLER,    'S', 100, 0, 1);
+regPhys(E.LED,       'S', 100, 0, 1);
+regPhys(E.FAN,       'S', 100, 0, 1);
+regPhys(E.VOLCANO,   'S', 100);
+regPhys(E.ANT,       'P', 45, 70);
+regPhys(E.FISH,      'L', 23, 50);
+regPhys(E.CLOUD,     'G', -7);
+regPhys(E.RAIN,      'L', 24);
+regPhys(E.OXYGEN,    'G', -9);
+regPhys(E.MOSS,      'S', 90, 18);
+regPhys(E.WAX,       'S', 65, 45);
+regPhys(E.RUBBER,    'S', 100, 82);
+regPhys(E.CERAMIC,   'S', 100);
+regPhys(E.OBSIDIAN,  'S', 100);
+regPhys(E.CORAL,     'S', 86);
+regPhys(E.HONEY,     'L', 30, 0);
+regPhys(E.MUD,       'L', 58, 0);
+regPhys(E.COPPER,    'S', 100, 0, 1);
+regPhys(E.COAL,      'P', 72, 84);
+regPhys(E.CHARCOAL,  'P', 38, 95);
+regPhys(E.BUBBLE,    'G', -3);
+regPhys(E.SALTPETER, 'P', 47, 45);
+regPhys(E.STEEL,     'S', 100, 0, 1);
+regPhys(E.MAGNET,    'S', 100);
+regPhys(E.CLAY,      'P', 57);
+regPhys(E.GRAVEL,    'P', 66);
+
+// Palette definition (Order matches iconic SmellyMoo layout: Fire/Lava/Sand/Salt/Ice/Seed/Plant/Algae/Concrete/etc. right up front!)
+const PALETTE = [
+  // First visible columns mimic the exact iconic SmellyMoo screenshot!
+  { id:E.EMPTY,     name:'Ластик',   cat:'tools',  tile:'#eceff1', sw:'#222', desc:'Стирает любые элементы', ico:'eraser' },
+  { id:E.CLONE,     name:'Дозатор',  cat:'mech',   tile:'#f48fb1', sw:'#ec4899', desc:'Бесконечно льёт касающийся элемент', ico:'clone' },
+
+  { id:E.FIRE,      name:'Огонь',    cat:'fire',   tile:'#f57c00', sw:'#ff5722', desc:'Горит, греет, поджигает', ico:'fire' },
+  { id:E.SEED,      name:'Семена',   cat:'nature', tile:'#9ccc65', sw:'#a16207', desc:'Прорастают на воде и земле', ico:'seed' },
+
+  { id:E.LAVA,      name:'Лава',     cat:'fire',   tile:'#ef6c00', sw:'#ff3d00', desc:'Плавит всё, от воды → камень', ico:'lava' },
+  { id:E.PLANT,     name:'Растение', cat:'nature', tile:'#8bc34a', sw:'#22c55e', desc:'Растёт от воды, горит', ico:'plant' },
+
+  { id:E.SAND,      name:'Песок',    cat:'powder', tile:'#d4ee8b', sw:'#ffd000', desc:'Сыпется, от жара → стекло', ico:'sand' },
+  { id:E.ALGAE,     name:'Кувшинка', cat:'nature', tile:'#aed581', sw:'#16a34a', desc:'Растёт прямо в воде', ico:'lily' },
+
+  { id:E.WATER,     name:'Вода',     cat:'liquid', tile:'#81d4fa', sw:'#0066ff', desc:'Течёт, тушит огонь, питает', ico:'water' },
+  { id:E.CONCRETE,  name:'Бетон',    cat:'powder', tile:'#d4ee8b', sw:'#9ca3af', desc:'С водой твердеет в камень', ico:'concrete' },
+
+  { id:E.SALT,      name:'Соль',     cat:'powder', tile:'#d4ee8b', sw:'#ffffff', desc:'Растворяется в воде, топит лёд', ico:'salt' },
+  { id:E.GUNPOWDER, name:'Порох',    cat:'fire',   tile:'#d4ee8b', sw:'#4b5563', desc:'Взрывается от искры и огня', ico:'powder' },
+
+  { id:E.ICE,       name:'Лёд',      cat:'liquid', tile:'#81d4fa', sw:'#7dd3fc', desc:'Холодный блок, тает в воду', ico:'ice' },
+  { id:E.OIL,       name:'Нефть',    cat:'liquid', tile:'#d4c06a', sw:'#9e8211', desc:'Плавает на воде и полыхает', ico:'oil' },
+
+  { id:E.BRICK,     name:'Кирпич',   cat:'solid',  tile:'#ef9a9a', sw:'#b93a2e', desc:'Прочная кирпичная стена', ico:'brick' },
+  { id:E.WOOD,      name:'Дерево',   cat:'nature', tile:'#bcaaa4', sw:'#784421', desc:'Твёрдые брёвна, долго горят', ico:'wood' },
+
+  { id:E.TNT,       name:'TNT',      cat:'fire',   tile:'#ff7043', sw:'#dc2626', desc:'Мощный взрывной блок', ico:'tnt' },
+  { id:E.FUSE,      name:'Фитиль',   cat:'fire',   tile:'#ffcc80', sw:'#a16207', desc:'Медленно передаёт огонь', ico:'fuse' },
+
+  { id:E.C4,        name:'C4',       cat:'fire',   tile:'#ff8a65', sw:'#65a30d', desc:'Детонация от огня или тока!', ico:'c4' },
+  { id:E.ACID,      name:'Кислота',  cat:'liquid', tile:'#b2ff59', sw:'#39ff14', desc:'Разъедает всё, кроме стекла', ico:'acid' },
+
+  { id:E.STONE,     name:'Камень',   cat:'solid',  tile:'#b0bec5', sw:'#78828c', desc:'Крепкий гранит, плавится в лаву', ico:'stone' },
+  { id:E.GLASS,     name:'Стекло',   cat:'solid',  tile:'#b3e5fc', sw:'#93c5fd', desc:'Устойчиво к кислоте!', ico:'glass' },
+
+  { id:E.METAL,     name:'Металл',   cat:'solid',  tile:'#cfd8dc', sw:'#64748b', desc:'Проводит ток и тепло', ico:'metal' },
+  { id:E.GASOLINE,  name:'Бензин',   cat:'liquid', tile:'#ffe082', sw:'#f59e0b', desc:'Мгновенно вспыхивает!', ico:'gasoline' },
+
+  { id:E.GAS,       name:'Газ',      cat:'fire',   tile:'#fff59d', sw:'#eab308', desc:'Поднимается вверх и взрывается', ico:'gas' },
+  { id:E.NITRO,     name:'Нитро',    cat:'fire',   tile:'#ffab91', sw:'#10b981', desc:'Взрывоопасная жидкость', ico:'nitro' },
+
+  { id:E.THERMITE,  name:'Термит',   cat:'fire',   tile:'#ffab40', sw:'#b45309', desc:'Прожигает металл и кирпич', ico:'thermite' },
+  { id:E.URANIUM,   name:'Уран',     cat:'fire',   tile:'#ccff90', sw:'#4ade80', desc:'Самонагрев → ядерный взрыв!', ico:'uranium' },
+
+  { id:E.VOLCANO,   name:'Вулкан',   cat:'fire',   tile:'#ff7043', sw:'#b91c1c', desc:'Фонтан лавы и искр', ico:'volcano' },
+  { id:E.FIREWORK,  name:'Салют',    cat:'fire',   tile:'#ff80ab', sw:'#ec4899', desc:'Взлетает и взрывается искрами', ico:'firework' },
+
+  { id:E.PLASMA,    name:'Плазма',   cat:'fire',   tile:'#ea80fc', sw:'#d946ef', desc:'5000°C — испаряет почти всё', ico:'plasma' },
+  { id:E.SNOW,      name:'Снег',     cat:'powder', tile:'#e1f5fe', sw:'#e0f2fe', desc:'Кружится и тает от тепла', ico:'snow' },
+
+  { id:E.NITROGEN,  name:'Азот -196',cat:'liquid', tile:'#80deea', sw:'#38bdf8', desc:'Мгновенная заморозка всего', ico:'nitrogen' },
+  { id:E.MERCURY,   name:'Ртуть',    cat:'liquid', tile:'#cfd8dc', sw:'#cbd5e1', desc:'Сверхтяжёлый жидкий металл', ico:'mercury' },
+
+  { id:E.DIRT,      name:'Земля',    cat:'powder', tile:'#d7ccc8', sw:'#795548', desc:'Почва для роста семян', ico:'dirt' },
+  { id:E.SAWDUST,   name:'Опилки',   cat:'powder', tile:'#ffe0b2', sw:'#d97706', desc:'Плавающая стружка, легко горит', ico:'sawdust' },
+
+  { id:E.SULFUR,    name:'Сера',     cat:'powder', tile:'#fff176', sw:'#facc15', desc:'Синее пламя и ядовитый газ', ico:'sulfur' },
+  { id:E.ASH,       name:'Пепел',    cat:'powder', tile:'#cfd8dc', sw:'#6b7280', desc:'Лёгкий пепел от пожара', ico:'ash' },
+
+  { id:E.FOAM,      name:'Пена',     cat:'liquid', tile:'#f5f5f5', sw:'#f8fafc', desc:'Плавает сверху, тушит пожар', ico:'foam' },
+  { id:E.STEAM,     name:'Пар',      cat:'liquid', tile:'#e0f7fa', sw:'#cbd5e1', desc:'Остывает обратно в воду', ico:'steam' },
+
+  { id:E.SMOKE,     name:'Дым',      cat:'fire',   tile:'#b0bec5', sw:'#52525b', desc:'Клубится вверх и тает', ico:'smoke' },
+  { id:E.TOXIC,     name:'Яд-газ',   cat:'nature', tile:'#a5d6a7', sw:'#4ade80', desc:'Убивает растения и существ', ico:'toxic' },
+
+  { id:E.VIRUS,     name:'Вирус',    cat:'nature', tile:'#ce93d8', sw:'#a855f7', desc:'Заражает всё вокруг (боится огня)', ico:'virus' },
+  { id:E.ANT,       name:'Муравей',  cat:'nature', tile:'#ffcc80', sw:'#b45309', desc:'Ползает и прогрызает ходы', ico:'ant' },
+
+  { id:E.FISH,      name:'Рыбка',    cat:'nature', tile:'#80d8ff', sw:'#fb923c', desc:'Плавает в воде', ico:'fish' },
+  { id:E.SPONGE,    name:'Губка',    cat:'solid',  tile:'#fff59d', sw:'#eab308', desc:'Впитывает жидкости', ico:'sponge' },
+
+  { id:E.BATTERY,   name:'Батарея',  cat:'mech',   tile:'#ffe082', sw:'#eab308', desc:'Генерирует электрический ток', ico:'battery' },
+  { id:E.WIRE,      name:'Провод',   cat:'mech',   tile:'#ffab91', sw:'#b45309', desc:'Быстро передаёт электричество', ico:'wire' },
+
+  { id:E.HEATER,    name:'ТЭН +°C',  cat:'mech',   tile:'#ff8a80', sw:'#ef4444', desc:'От тока раскаляется докрасна', ico:'heater' },
+  { id:E.COOLER,    name:'Фризер',   cat:'mech',   tile:'#80d8ff', sw:'#0ea5e9', desc:'От тока морозит всё вокруг', ico:'cooler' },
+
+  { id:E.LED,       name:'Лампа',    cat:'mech',   tile:'#ffff8d', sw:'#fde047', desc:'Светится при подаче тока', ico:'led' },
+  { id:E.FAN,       name:'Вентилят.',cat:'mech',   tile:'#b2ebf2', sw:'#22d3ee', desc:'Сдувает частицы вправо', ico:'fan' },
+
+  { id:E.VOID,      name:'Слив',     cat:'mech',   tile:'#78909c', sw:'#111827', desc:'Поглощает любые частицы', ico:'void' },
+  { id:E.TOOL_SPARK,name:'Молния',   cat:'tools',  tile:'#fff176', sw:'#fde047', desc:'Подаёт искру / заряд тока', ico:'spark' },
+
+  { id:E.TOOL_HEAT, name:'Нагрев',   cat:'tools',  tile:'#ff8a65', sw:'#ef4444', desc:'Нагревает область без огня', ico:'heat' },
+  { id:E.TOOL_COOL, name:'Холод',   cat:'tools',  tile:'#81d4fa', sw:'#38bdf8', desc:'Охлаждает и замораживает', ico:'cool' },
+  { id:E.CLOUD,     name:'Облако',    cat:'weather',tile:'#cfd8e8', sw:'#cbd5e1', desc:'Плывёт по воздуху, даёт дождь', ico:'cloud' },
+  { id:E.RAIN,      name:'Дождь',     cat:'weather',tile:'#80deea', sw:'#38bdf8', desc:'Капли падают и наполняют лужи', ico:'rain' },
+  { id:E.OXYGEN,    name:'Кислород',  cat:'new',    tile:'#b3e5fc', sw:'#7dd3fc', desc:'Поддерживает горение рядом', ico:'oxygen' },
+  { id:E.MOSS,      name:'Мох',       cat:'new',    tile:'#a5d6a7', sw:'#4d9b4d', desc:'Разрастается во влажной почве', ico:'moss' },
+  { id:E.WAX,       name:'Воск',      cat:'new',    tile:'#fff59d', sw:'#facc15', desc:'Мягкий материал: плавится от жара', ico:'wax' },
+  { id:E.RUBBER,    name:'Резина',    cat:'new',    tile:'#90a4ae', sw:'#334155', desc:'Упругая, горит и даёт дым', ico:'rubber' },
+  { id:E.CERAMIC,   name:'Керамика',  cat:'new',    tile:'#ffccbc', sw:'#e7b7a8', desc:'Жаропрочная стенка', ico:'ceramic' },
+  { id:E.OBSIDIAN,  name:'Обсидиан',  cat:'new',    tile:'#9575cd', sw:'#4c1d95', desc:'Вулканическое стекло, почти не плавится', ico:'obsidian' },
+  { id:E.CORAL,     name:'Коралл',    cat:'new',    tile:'#ffab91', sw:'#fb7185', desc:'Растёт под водой колониями', ico:'coral' },
+  { id:E.HONEY,     name:'Мёд',       cat:'new',    tile:'#ffca28', sw:'#d97706', desc:'Очень вязкая жидкость, медленно растекается', ico:'honey' },
+  { id:E.MUD,       name:'Грязь',     cat:'new',    tile:'#a1887f', sw:'#795548', desc:'Тяжёлая вязкая жижа, высыхает от жара', ico:'mud' },
+  { id:E.COPPER,    name:'Медь',      cat:'mech',   tile:'#ffab91', sw:'#c76a3a', desc:'Металл-проводник для цепей', ico:'copper' },
+  { id:E.COAL,      name:'Уголь',     cat:'fire',   tile:'#757575', sw:'#303238', desc:'Горит долго и разогревает соседей', ico:'coal' },
+  { id:E.CHARCOAL,  name:'Древесный уголь', cat:'fire', tile:'#616161', sw:'#202124', desc:'Лёгкий и очень горючий', ico:'charcoal' },
+  { id:E.BUBBLE,    name:'Пузырь',    cat:'weather',tile:'#80deea', sw:'#9be7ff', desc:'Летит вверх, лопается от огня', ico:'bubble' },
+  { id:E.SALTPETER, name:'Селитра',   cat:'fire',   tile:'#fff9c4', sw:'#e8d98c', desc:'Вспыхивает и поджигает порох рядом', ico:'saltpeter' },
+  { id:E.STEEL,     name:'Сталь',     cat:'solid',  tile:'#90a4ae', sw:'#718096', desc:'Прочная электропроводная стена', ico:'steel' },
+  { id:E.MAGNET,    name:'Магнит',    cat:'mech',   tile:'#ef9a9a', sw:'#dc2626', desc:'Медленно притягивает стальные блоки', ico:'magnet' },
+  { id:E.CLAY,      name:'Глина',     cat:'powder', tile:'#d7a27c', sw:'#ad654b', desc:'С водой становится грязью, в жару — керамикой', ico:'clay' },
+  { id:E.GRAVEL,    name:'Гравий',    cat:'powder', tile:'#b0bec5', sw:'#7b838a', desc:'Тяжёлые камешки скатываются по склонам', ico:'gravel' },
+];
+
+const PALETTE_MAP = {};
+PALETTE.forEach(p => PALETTE_MAP[p.id] = p);
+
+/* ==================== CRISP CARTOON SVG ICONS ==================== */
+function tileIcon(type) {
+  const s = 'stroke="#151515" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"';
+  switch (type) {
+    case 'eraser': return `<svg viewBox="0 0 36 36"><path d="M8 24 L20 10 L30 18 L18 30 L10 30 Z" fill="#f472b6" ${s}/><path d="M14 17 L24 25" ${s}/><path d="M6 30 H30" ${s}/></svg>`;
+    case 'fire': return `<svg viewBox="0 0 36 36"><path d="M18 4 C24 12 28 16 26 24 C25 29 22 32 18 32 C13 32 9 28 10 22 C10 17 13 14 14 11 C15 14 17 14 18 4 Z" fill="#fde047" ${s}/><path d="M18 16 C21 20 22 23 21 27 C20 29 16 29 15 26 C14 23 16 20 18 16 Z" fill="#ef4444"/></svg>`;
+    case 'lava': return `<svg viewBox="0 0 36 36"><path d="M6 30 L14 14 L22 14 L30 30 Z" fill="#7c2d12" ${s}/><path d="M14 14 Q18 22 22 14" fill="#ff3d00" ${s}/><circle cx="15" cy="9" r="2" fill="#fde047"/><circle cx="21" cy="7" r="2.2" fill="#ff3d00"/><circle cx="18" cy="11" r="1.8" fill="#fb923c"/></svg>`;
+    case 'sand': return `<svg viewBox="0 0 36 36"><path d="M4 30 L19 15 L32 30 Z" fill="#fde047" ${s}/><path d="M10 8 L10 24" ${s}/><rect x="7" y="21" width="6" height="7" rx="1" fill="#64748b" ${s}/></svg>`;
+    case 'water': return `<svg viewBox="0 0 36 36"><path d="M18 5 C24 14 27 19 27 24 A9 9 0 0 1 9 24 C9 19 12 14 18 5 Z" fill="#2563eb" ${s}/><path d="M14 22 A4 4 0 0 0 18 27" fill="none" stroke="#93c5fd" stroke-width="2.2" stroke-linecap="round"/></svg>`;
+    case 'salt': return `<svg viewBox="0 0 36 36"><rect x="11" y="13" width="14" height="17" rx="3" fill="#fff" ${s}/><path d="M12 13 C12 8 24 8 24 13 Z" fill="#cbd5e1" ${s}/><line x1="15" y1="17" x2="15" y2="26" stroke="#cbd5e1" stroke-width="1.5"/><line x1="21" y1="17" x2="21" y2="26" stroke="#cbd5e1" stroke-width="1.5"/></svg>`;
+    case 'ice': return `<svg viewBox="0 0 36 36"><path d="M18 5 V31 M5 18 H31 M9 9 L27 27 M27 9 L9 27" stroke="#fff" stroke-width="4" stroke-linecap="round"/><path d="M18 5 V31 M5 18 H31 M9 9 L27 27 M27 9 L9 27" stroke="#0284c7" stroke-width="2" stroke-linecap="round"/></svg>`;
+    case 'seed': return `<svg viewBox="0 0 36 36"><ellipse cx="18" cy="26" rx="4.5" ry="6" fill="#92400e" ${s}/><path d="M18 20 Q10 17 9 10 Q16 10 18 17" fill="#22c55e" ${s}/><path d="M18 20 Q26 17 27 10 Q20 10 18 17" fill="#4ade80" ${s}/></svg>`;
+    case 'plant': return `<svg viewBox="0 0 36 36"><path d="M18 31 V12" ${s}/><path d="M18 24 Q9 22 8 15 Q15 15 18 21" fill="#22c55e" ${s}/><path d="M18 18 Q27 16 28 9 Q21 9 18 15" fill="#16a34a" ${s}/></svg>`;
+    case 'lily': return `<svg viewBox="0 0 36 36"><ellipse cx="18" cy="25" rx="13" ry="5" fill="#16a34a" ${s}/><path d="M11 23 Q14 12 18 22 Q22 12 25 23 Z" fill="#f43f5e" ${s}/><path d="M14 23 Q18 11 22 23 Z" fill="#fb7185" ${s}/></svg>`;
+    case 'concrete': return `<svg viewBox="0 0 36 36"><rect x="6" y="20" width="22" height="7" rx="2" fill="#64748b" ${s}/><path d="M10 20 L15 11 L26 13 L23 20 Z" fill="#e2e8f0" ${s}/><circle cx="11" cy="28" r="3" fill="#1e293b" ${s}/><circle cx="24" cy="28" r="3" fill="#1e293b" ${s}/></svg>`;
+    case 'powder': return `<svg viewBox="0 0 36 36"><path d="M7 12 H29 L24 19 H12 Z" fill="#64748b" ${s}/><circle cx="14" cy="24" r="1.7" fill="#111"/><circle cx="18" cy="27" r="1.7" fill="#111"/><circle cx="22" cy="24" r="1.7" fill="#111"/><circle cx="17" cy="22" r="1.5" fill="#111"/></svg>`;
+    case 'oil': return `<svg viewBox="0 0 36 36"><path d="M18 6 C24 15 26 19 26 24 A8 8 0 0 1 10 24 C10 19 12 15 18 6 Z" fill="#713f12" ${s}/><path d="M15 22 A3 3 0 0 0 18 26" fill="none" stroke="#eab308" stroke-width="2" stroke-linecap="round"/></svg>`;
+    case 'brick': return `<svg viewBox="0 0 36 36"><rect x="5" y="8" width="26" height="20" rx="2" fill="#b91c1c" ${s}/><path d="M5 15 H31 M5 22 H31 M14 8 V15 M23 8 V15 M18 15 V22 M13 22 V28 M24 22 V28" stroke="#e2e8f0" stroke-width="1.8"/></svg>`;
+    case 'wood': return `<svg viewBox="0 0 36 36"><rect x="5" y="10" width="26" height="16" rx="4" fill="#92400e" ${s}/><ellipse cx="28" cy="18" rx="3" ry="8" fill="#d97706" ${s}/><path d="M9 15 H22 M11 21 H21" stroke="#451a03" stroke-width="1.6"/></svg>`;
+    case 'tnt': return `<svg viewBox="0 0 36 36"><rect x="6" y="7" width="24" height="22" rx="3" fill="#dc2626" ${s}/><rect x="6" y="13" width="24" height="10" fill="#fff" stroke="#151515" stroke-width="1.5"/><text x="18" y="21" font-size="9" font-weight="900" text-anchor="middle" fill="#111" font-family="Arial">TNT</text></svg>`;
+    case 'fuse': return `<svg viewBox="0 0 36 36"><path d="M7 29 Q15 26 18 18 Q21 10 28 8" fill="none" stroke="#78350f" stroke-width="4" stroke-linecap="round"/><circle cx="28" cy="8" r="4" fill="#fde047" stroke="#ef4444" stroke-width="2"/></svg>`;
+    case 'c4': return `<svg viewBox="0 0 36 36"><rect x="6" y="9" width="24" height="18" rx="3" fill="#65a30d" ${s}/><rect x="11" y="13" width="14" height="10" rx="1" fill="#1e293b"/><text x="18" y="21" font-size="8" font-weight="900" text-anchor="middle" fill="#ef4444" font-family="monospace">C4</text></svg>`;
+    case 'acid': return `<svg viewBox="0 0 36 36"><path d="M14 7 H22 V13 L28 27 A2 2 0 0 1 26 30 H10 A2 2 0 0 1 8 27 L14 13 Z" fill="#e2e8f0" ${s}/><path d="M11 22 H25 L27 28 H9 Z" fill="#22c55e"/><circle cx="16" cy="25" r="1.5" fill="#dcfce7"/><circle cx="21" cy="24" r="1.2" fill="#dcfce7"/></svg>`;
+    case 'stone': return `<svg viewBox="0 0 36 36"><polygon points="7,27 11,11 22,8 30,17 27,28 13,30" fill="#64748b" ${s}/><polygon points="11,11 22,8 20,17 12,18" fill="#94a3b8"/></svg>`;
+    case 'glass': return `<svg viewBox="0 0 36 36"><rect x="7" y="7" width="22" height="22" rx="2" fill="#e0f2fe" ${s}/><path d="M11 22 L22 11 M16 25 L25 16" stroke="#38bdf8" stroke-width="2.2" stroke-linecap="round"/></svg>`;
+    case 'metal': return `<svg viewBox="0 0 36 36"><rect x="6" y="6" width="24" height="24" rx="3" fill="#94a3b8" ${s}/><circle cx="11" cy="11" r="1.8" fill="#334155"/><circle cx="25" cy="11" r="1.8" fill="#334155"/><circle cx="11" cy="25" r="1.8" fill="#334155"/><circle cx="25" cy="25" r="1.8" fill="#334155"/></svg>`;
+    case 'gasoline': return `<svg viewBox="0 0 36 36"><rect x="9" y="10" width="18" height="20" rx="3" fill="#ef4444" ${s}/><path d="M13 10 V7 H20 V10" fill="none" ${s}/><path d="M14 16 L22 24 M22 16 L14 24" stroke="#fde047" stroke-width="2"/></svg>`;
+    case 'gas': return `<svg viewBox="0 0 36 36"><rect x="11" y="11" width="14" height="19" rx="4" fill="#f97316" ${s}/><rect x="14" y="6" width="8" height="5" rx="1" fill="#cbd5e1" ${s}/><line x1="11" y1="18" x2="25" y2="18" ${s}/></svg>`;
+    case 'nitro': return `<svg viewBox="0 0 36 36"><circle cx="18" cy="20" r="10" fill="#10b981" ${s}/><path d="M18 14 V21 M18 25 V26" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/><rect x="15" y="6" width="6" height="4" fill="#cbd5e1" ${s}/></svg>`;
+    case 'thermite': return `<svg viewBox="0 0 36 36"><path d="M6 29 L18 11 L30 29 Z" fill="#b45309" ${s}/><circle cx="18" cy="11" r="4" fill="#fff" stroke="#f97316" stroke-width="2"/></svg>`;
+    case 'uranium': return `<svg viewBox="0 0 36 36"><circle cx="18" cy="18" r="12" fill="#facc15" ${s}/><path d="M18 18 L12 8 A12 12 0 0 1 24 8 Z" fill="#111"/><path d="M18 18 L29 19 A12 12 0 0 1 23 28 Z" fill="#111"/><path d="M18 18 L7 19 A12 12 0 0 0 13 28 Z" fill="#111"/><circle cx="18" cy="18" r="3.2" fill="#facc15" stroke="#111" stroke-width="1.5"/></svg>`;
+    case 'volcano': return `<svg viewBox="0 0 36 36"><path d="M4 30 L13 14 H23 L32 30 Z" fill="#57534e" ${s}/><path d="M13 14 L18 21 L23 14" fill="#ef4444"/><path d="M18 13 Q14 7 10 8 M18 13 Q22 6 26 8 M18 13 V5" stroke="#ef4444" stroke-width="2" fill="none" stroke-linecap="round"/></svg>`;
+    case 'firework': return `<svg viewBox="0 0 36 36"><path d="M18 6 L24 14 H12 Z" fill="#ef4444" ${s}/><rect x="13" y="14" width="10" height="12" fill="#fff" ${s}/><path d="M13 18 H23 M13 22 H23" stroke="#ef4444" stroke-width="2"/><line x1="18" y1="26" x2="18" y2="33" ${s}/></svg>`;
+    case 'plasma': return `<svg viewBox="0 0 36 36"><circle cx="18" cy="18" r="11" fill="#c026d3" ${s}/><path d="M11 18 L16 14 L15 20 L25 16 L19 22 L21 17" fill="none" stroke="#fff" stroke-width="2"/></svg>`;
+    case 'snow': return `<svg viewBox="0 0 36 36"><circle cx="12" cy="13" r="3" fill="#fff" ${s}/><circle cx="24" cy="12" r="2.5" fill="#fff" ${s}/><circle cx="18" cy="22" r="3.5" fill="#fff" ${s}/><circle cx="10" cy="25" r="2" fill="#fff" ${s}/><circle cx="26" cy="24" r="2.5" fill="#fff" ${s}/></svg>`;
+    case 'nitrogen': return `<svg viewBox="0 0 36 36"><rect x="10" y="11" width="16" height="19" rx="4" fill="#0284c7" ${s}/><rect x="14" y="6" width="8" height="5" fill="#e0f2fe" ${s}/><text x="18" y="24" font-size="9" font-weight="900" text-anchor="middle" fill="#fff" font-family="Arial">N2</text></svg>`;
+    case 'mercury': return `<svg viewBox="0 0 36 36"><ellipse cx="18" cy="23" rx="12" ry="7" fill="#cbd5e1" ${s}/><ellipse cx="14" cy="21" rx="4" ry="2" fill="#fff"/></svg>`;
+    case 'dirt': return `<svg viewBox="0 0 36 36"><path d="M5 29 Q18 14 31 29 Z" fill="#78350f" ${s}/><circle cx="14" cy="25" r="1.5" fill="#451a03"/><circle cx="21" cy="23" r="1.5" fill="#451a03"/><circle cx="18" cy="26" r="1.5" fill="#a16207"/></svg>`;
+    case 'sawdust': return `<svg viewBox="0 0 36 36"><path d="M6 12 L26 20 L23 24 L4 16 Z" fill="#94a3b8" ${s}/><rect x="23" y="18" width="8" height="6" rx="1" fill="#92400e" ${s}/><circle cx="12" cy="27" r="1.8" fill="#d97706"/><circle cx="17" cy="29" r="1.8" fill="#d97706"/><circle cx="22" cy="27" r="1.8" fill="#d97706"/></svg>`;
+    case 'sulfur': return `<svg viewBox="0 0 36 36"><polygon points="6,28 14,13 24,15 30,28" fill="#eab308" ${s}/><polygon points="14,13 20,21 24,15" fill="#fef08a"/></svg>`;
+    case 'ash': return `<svg viewBox="0 0 36 36"><path d="M5 29 Q18 16 31 29 Z" fill="#6b7280" ${s}/><circle cx="15" cy="24" r="1.5" fill="#d1d5db"/><circle cx="22" cy="25" r="1.5" fill="#374151"/></svg>`;
+    case 'foam': return `<svg viewBox="0 0 36 36"><circle cx="13" cy="22" r="6" fill="#fff" ${s}/><circle cx="23" cy="22" r="6" fill="#fff" ${s}/><circle cx="18" cy="16" r="6.5" fill="#fff" ${s}/></svg>`;
+    case 'steam': return `<svg viewBox="0 0 36 36"><path d="M12 28 Q9 22 13 17 Q16 12 12 8 M19 28 Q16 22 20 17 Q23 12 19 8 M26 26 Q23 21 26 16" fill="none" stroke="#475569" stroke-width="2.5" stroke-linecap="round"/></svg>`;
+    case 'smoke': return `<svg viewBox="0 0 36 36"><circle cx="14" cy="23" r="6" fill="#64748b" ${s}/><circle cx="22" cy="20" r="6" fill="#64748b" ${s}/><circle cx="18" cy="14" r="6" fill="#94a3b8" ${s}/></svg>`;
+    case 'toxic': return `<svg viewBox="0 0 36 36"><circle cx="18" cy="16" r="9" fill="#22c55e" ${s}/><rect x="13" y="23" width="10" height="6" rx="2" fill="#22c55e" ${s}/><circle cx="14.5" cy="15" r="2" fill="#111"/><circle cx="21.5" cy="15" r="2" fill="#111"/></svg>`;
+    case 'virus': return `<svg viewBox="0 0 36 36"><circle cx="18" cy="18" r="8" fill="#a855f7" ${s}/><path d="M18 5 V10 M18 26 V31 M5 18 H10 M26 18 H31 M9 9 L12 12 M24 24 L27 27 M27 9 L24 12 M12 24 L9 27" ${s}/></svg>`;
+    case 'ant': return `<svg viewBox="0 0 36 36"><circle cx="11" cy="18" r="3.5" fill="#7c2d12" ${s}/><circle cx="18" cy="18" r="3" fill="#7c2d12" ${s}/><ellipse cx="25" cy="18" rx="4.5" ry="3.5" fill="#7c2d12" ${s}/><path d="M14 14 L12 10 M18 14 V9 M22 14 L24 10 M14 22 L12 26 M18 22 V27 M22 22 L24 26" ${s}/></svg>`;
+    case 'fish': return `<svg viewBox="0 0 36 36"><ellipse cx="16" cy="18" rx="9" ry="6" fill="#fb923c" ${s}/><polygon points="24,18 31,12 31,24" fill="#f97316" ${s}/><circle cx="12" cy="16.5" r="1.5" fill="#111"/></svg>`;
+    case 'sponge': return `<svg viewBox="0 0 36 36"><rect x="6" y="10" width="24" height="16" rx="4" fill="#facc15" ${s}/><circle cx="12" cy="16" r="1.8" fill="#ca8a04"/><circle cx="20" cy="15" r="2" fill="#ca8a04"/><circle cx="16" cy="21" r="1.6" fill="#ca8a04"/><circle cx="24" cy="21" r="1.5" fill="#ca8a04"/></svg>`;
+    case 'clone': return `<svg viewBox="0 0 36 36"><path d="M7 8 H29 L22 19 V29 H14 V19 Z" fill="#ec4899" ${s}/><circle cx="18" cy="13" r="2" fill="#fff"/></svg>`;
+    case 'battery': return `<svg viewBox="0 0 36 36"><rect x="10" y="10" width="16" height="20" rx="2" fill="#22c55e" ${s}/><rect x="14" y="6" width="8" height="4" fill="#cbd5e1" ${s}/><path d="M18 14 L15 20 H19 L17 26 L22 19 H18 Z" fill="#fde047"/></svg>`;
+    case 'wire': return `<svg viewBox="0 0 36 36"><path d="M5 18 H31" stroke="#b45309" stroke-width="5" stroke-linecap="round"/><path d="M5 18 H31" stroke="#fde047" stroke-width="1.8" stroke-dasharray="4 4"/></svg>`;
+    case 'heater': return `<svg viewBox="0 0 36 36"><rect x="7" y="10" width="22" height="16" rx="3" fill="#ef4444" ${s}/><path d="M11 18 Q13 13 15 18 T19 18 T23 18 T26 18" fill="none" stroke="#fde047" stroke-width="2"/></svg>`;
+    case 'cooler': return `<svg viewBox="0 0 36 36"><rect x="7" y="10" width="22" height="16" rx="3" fill="#0ea5e9" ${s}/><path d="M18 12 V24 M12 18 H24" stroke="#fff" stroke-width="2.2"/></svg>`;
+    case 'led': return `<svg viewBox="0 0 36 36"><circle cx="18" cy="15" r="8" fill="#fef08a" ${s}/><rect x="14" y="23" width="8" height="6" rx="1" fill="#94a3b8" ${s}/></svg>`;
+    case 'fan': return `<svg viewBox="0 0 36 36"><circle cx="18" cy="18" r="11" fill="#e0f2fe" ${s}/><path d="M18 18 Q13 10 20 9 Q23 14 18 18 Q26 13 27 20 Q22 23 18 18 Q23 26 16 27 Q13 22 18 18 Q10 23 9 16 Q14 13 18 18" fill="#0284c7" stroke="#151515" stroke-width="1.2"/></svg>`;
+    case 'void': return `<svg viewBox="0 0 36 36"><circle cx="18" cy="18" r="11" fill="#111" stroke="#a855f7" stroke-width="2.5"/><circle cx="18" cy="18" r="5" fill="none" stroke="#fff" stroke-width="1.5" stroke-dasharray="3 2"/></svg>`;
+    case 'spark': return `<svg viewBox="0 0 36 36"><polygon points="20,4 9,20 17,20 15,32 27,16 19,16" fill="#fde047" ${s}/></svg>`;
+    case 'heat': return `<svg viewBox="0 0 36 36"><rect x="15" y="6" width="6" height="18" rx="3" fill="#fff" ${s}/><circle cx="18" cy="25" r="5.5" fill="#ef4444" ${s}/><rect x="16.5" y="12" width="3" height="12" fill="#ef4444"/></svg>`;
+    case 'cool': return `<svg viewBox="0 0 36 36"><rect x="15" y="6" width="6" height="18" rx="3" fill="#fff" ${s}/><circle cx="18" cy="25" r="5.5" fill="#38bdf8" ${s}/><rect x="16.5" y="16" width="3" height="8" fill="#38bdf8"/></svg>`;
+    case 'cloud': return `<svg viewBox="0 0 36 36"><path d="M9 26a6 6 0 0 1-1-12 10 10 0 0 1 19-1 7 7 0 0 1 1 13Z" fill="#f8fafc" ${s}/><path d="M13 28v4m7-4v4m7-4v4" stroke="#38bdf8" stroke-width="2" stroke-linecap="round"/></svg>`;
+    case 'rain': return `<svg viewBox="0 0 36 36"><path d="M8 18a5 5 0 0 1-1-10 8 8 0 0 1 16-1 6 6 0 0 1 1 11Z" fill="#e2e8f0" ${s}/><path d="m12 22-2 5m9-5-2 5m9-5-2 5" stroke="#0284c7" stroke-width="2.5" stroke-linecap="round"/></svg>`;
+    case 'oxygen': return `<svg viewBox="0 0 36 36"><circle cx="18" cy="18" r="13" fill="#e0f2fe" ${s}/><text x="18" y="22" font-size="11" font-weight="900" text-anchor="middle" fill="#0369a1" font-family="Arial">O₂</text></svg>`;
+    case 'moss': return `<svg viewBox="0 0 36 36"><path d="M5 27Q9 14 15 23Q18 8 23 22Q29 13 32 27Z" fill="#4d9b4d" ${s}/><path d="M7 28h22" stroke="#78350f" stroke-width="3"/></svg>`;
+    case 'wax': return `<svg viewBox="0 0 36 36"><path d="M10 30V15h16v15Z" fill="#facc15" ${s}/><path d="M18 17c-4-4 2-5 0-10 7 5 4 8 2 11" fill="#fb923c" ${s}/><path d="M13 23h10" stroke="#fff3a3" stroke-width="2"/></svg>`;
+    case 'rubber': return `<svg viewBox="0 0 36 36"><path d="M7 26Q8 10 18 10t11 16q-11 7-22 0Z" fill="#334155" ${s}/><path d="M12 23q6 4 12 0" fill="none" stroke="#94a3b8" stroke-width="2"/></svg>`;
+    case 'ceramic': return `<svg viewBox="0 0 36 36"><path d="M11 8h14l-2 6 5 13q-10 6-20 0l5-13Z" fill="#f1c7b8" ${s}/><path d="M14 18h8m-10 5h12" stroke="#fff1e9" stroke-width="2"/></svg>`;
+    case 'obsidian': return `<svg viewBox="0 0 36 36"><path d="M6 28 10 12l8-7 10 6 3 16-12 4Z" fill="#32165e" ${s}/><path d="m11 14 7-7 1 11-8 7Z" fill="#8b5cf6"/></svg>`;
+    case 'coral': return `<svg viewBox="0 0 36 36"><path d="M18 30V15m0 8-8-7m8 3 8-8m-8 4-2-8m2 16 8 4" fill="none" stroke="#fb7185" stroke-width="4" stroke-linecap="round" ${s}/></svg>`;
+    case 'honey': return `<svg viewBox="0 0 36 36"><path d="M18 5c5 8 9 12 9 19a9 9 0 0 1-18 0c0-7 4-11 9-19Z" fill="#fbbf24" ${s}/><path d="M14 23q1 4 5 4" fill="none" stroke="#fff1a8" stroke-width="2" stroke-linecap="round"/></svg>`;
+
+    case 'mud': return `<svg viewBox="0 0 36 36"><path d="M5 23q4-5 8 0t8 0 10 0v8H5Z" fill="#795548" ${s}/><circle cx="12" cy="26" r="2" fill="#bcaaa4"/><circle cx="24" cy="28" r="2" fill="#bcaaa4"/></svg>`;
+    case 'copper': return `<svg viewBox="0 0 36 36"><rect x="6" y="9" width="24" height="18" rx="3" fill="#c76a3a" ${s}/><path d="M11 13h14M11 18h14M11 23h14" stroke="#ffd0a8" stroke-width="2"/><circle cx="9" cy="12" r="1" fill="#713f12"/></svg>`;
+    case 'coal': return `<svg viewBox="0 0 36 36"><path d="m6 25 4-13 8-4 11 7-2 13-13 2Z" fill="#303238" ${s}/><path d="m12 14 7-3m-9 10 13-5" stroke="#73777e" stroke-width="2"/></svg>`;
+    case 'charcoal': return `<svg viewBox="0 0 36 36"><path d="M8 26 13 10l7-2 8 8-3 12-12 1Z" fill="#202124" ${s}/><path d="m13 13 5 2m-6 5 10 4" stroke="#676b73" stroke-width="2"/></svg>`;
+    case 'bubble': return `<svg viewBox="0 0 36 36"><circle cx="18" cy="18" r="11" fill="#dffaff" fill-opacity=".7" stroke="#0284c7" stroke-width="2"/><circle cx="14" cy="14" r="3" fill="#fff"/><path d="M13 29q5 4 10 0" fill="none" stroke="#38bdf8" stroke-width="2"/></svg>`;
+    case 'saltpeter': return `<svg viewBox="0 0 36 36"><path d="m7 25 4-11 8-5 9 7-3 12-12 2Z" fill="#eee9ca" ${s}/><circle cx="14" cy="18" r="1.4" fill="#fff"/><circle cx="23" cy="22" r="1.4" fill="#b5aa80"/></svg>`;
+    case 'steel': return `<svg viewBox="0 0 36 36"><rect x="5" y="8" width="26" height="20" rx="3" fill="#718096" ${s}/><path d="M9 12h18M9 17h18M9 22h18" stroke="#dce4eb" stroke-width="1.5"/><circle cx="9" cy="11" r="1" fill="#334155"/><circle cx="27" cy="25" r="1" fill="#334155"/></svg>`;
+    case 'magnet': return `<svg viewBox="0 0 36 36"><path d="M8 8v12a10 10 0 0 0 20 0V8h-7v12a3 3 0 0 1-6 0V8Z" fill="#ef4444" ${s}/><path d="M8 8h7v7H8zm13 0h7v7h-7z" fill="#e5e7eb" ${s}/></svg>`;
+    case 'clay': return `<svg viewBox="0 0 36 36"><path d="M6 28 12 13l9-5 10 9-5 13-13 1Z" fill="#ad654b" ${s}/><path d="m13 16 7-4m-8 10 12-3" stroke="#e7b7a0" stroke-width="2"/></svg>`;
+    case 'gravel': return `<svg viewBox="0 0 36 36"><path d="m5 25 5-8 6 2 2 8-8 3Zm12-5 4-9 7 2 3 9-7 3Zm-1 7 4-4 5 3-2 5h-7Z" fill="#89939b" ${s}/></svg>`;
+    default: return `<svg viewBox="0 0 36 36"><circle cx="18" cy="18" r="10" fill="#fff" ${s}/></svg>`;
+  }
+}
+
+/* ==================== AUDIO ENGINE ==================== */
+const SFX = {
+  ctx: null, on: true, lastPlay: 0,
+  unlock() {
+    if (!this.ctx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) this.ctx = new AC();
+    }
+    if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume().catch(()=>{});
+  },
+  boom(size=1) {
+    if (!this.on) return;
+    const now = performance.now();
+    if (now - this.lastPlay < 90) return;
+    this.lastPlay = now;
+    this.unlock();
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const o = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(110 / Math.max(0.7, size * 0.5), t);
+    o.frequency.exponentialRampToValueAtTime(24, t + 0.25 + size * 0.08);
+    g.gain.setValueAtTime(Math.min(0.22, 0.1 + size * 0.05), t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.28 + size * 0.1);
+    o.connect(g); g.connect(this.ctx.destination);
+    o.start(t); o.stop(t + 0.42);
+  },
+  zap() {
+    if (!this.on) return;
+    const now = performance.now();
+    if (now - this.lastPlay < 70) return;
+    this.lastPlay = now;
+    this.unlock();
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const o = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    o.type = 'square';
+    o.frequency.setValueAtTime(980, t);
+    o.frequency.exponentialRampToValueAtTime(240, t + 0.06);
+    g.gain.setValueAtTime(0.06, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.065);
+    o.connect(g); g.connect(this.ctx.destination);
+    o.start(t); o.stop(t + 0.07);
+  }
+};
+
+/* ==================== SIMULATION GRID SETUP ==================== */
+const stageWrap = document.getElementById('stageWrap');
+const canvas = document.getElementById('simCanvas');
+const ctx = canvas.getContext('2d', { alpha: false });
+const oCanvas = document.getElementById('overlayCanvas');
+const oCtx = oCanvas.getContext('2d');
+
+let W = 180, H = 260, N = W * H;
+let grid, temp, meta, shade, elec, stamp;
+let imgData, buf32;
+let bgHex = '#02030a';
+let bgPacked = packRGBA(2, 3, 10);
+
+function allocGrid(w, h) {
+  W = w; H = h; N = W * H;
+  canvas.width = W; canvas.height = H;
+  grid  = new Uint8Array(N);
+  temp  = new Float32Array(N);
+  meta  = new Uint8Array(N);   // clone element / life / wet / sponge amount / ant dir
+  shade = new Uint8Array(N);   // per-particle color grain 0..255
+  elec  = new Uint8Array(N);   // 0=none, 1=head, 2=tail
+  stamp = new Uint16Array(N);
+  temp.fill(22);
+  imgData = ctx.createImageData(W, H);
+  buf32 = new Uint32Array(imgData.data.buffer);
+}
+
+function initDimensions() {
+  const rect = stageWrap.getBoundingClientRect();
+  const cw = Math.max(240, rect.width);
+  const ch = Math.max(240, rect.height);
+  oCanvas.width = cw * devicePixelRatio;
+  oCanvas.height = ch * devicePixelRatio;
+  oCtx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+
+  // Choose crisp pixel size (~2.3 - 3 CSS px per cell, matching SmellyMoo!)
+  const targetW = Math.min(220, Math.max(150, Math.round(cw / 2.35)));
+  const targetH = Math.min(310, Math.max(160, Math.round(targetW * (ch / cw))));
+  allocGrid(targetW, targetH);
+}
+
+/* ==================== UNDO STACK ==================== */
+const undoStack = [];
+function pushUndo() {
+  if (undoStack.length >= 10) undoStack.shift();
+  undoStack.push({
+    grid: new Uint8Array(grid),
+    temp: new Float32Array(temp),
+    meta: new Uint8Array(meta),
+    shade: new Uint8Array(shade)
+  });
+}
+function doUndo() {
+  if (!undoStack.length) { showToast('Нечего отменять'); return; }
+  const snap = undoStack.pop();
+  grid.set(snap.grid); temp.set(snap.temp); meta.set(snap.meta); shade.set(snap.shade);
+  elec.fill(0);
+  showToast('↩ Отменено');
+}
+
+/* ==================== CELL HELPERS ==================== */
+let frame = 0;
+let stepId = 1;
+let paused = false;
+let speed = 1;
+let heatVision = false;
+let gravityDir = 1; // vertical: 1 down, -1 up; horizontal: 2 right, -2 left, 0 zero
+let overwriteSolid = false;
+
+function setCell(i, id, customMeta) {
+  grid[i] = id;
+  shade[i] = (Math.random() * 255) | 0;
+  elec[i] = 0;
+  if (customMeta !== undefined) meta[i] = customMeta;
+  else if (id === E.FIRE) meta[i] = 20 + ((Math.random() * 28) | 0);
+  else if (id === E.PLASMA) meta[i] = 18 + ((Math.random() * 24) | 0);
+  else if (id === E.SMOKE) meta[i] = 65 + ((Math.random() * 80) | 0);
+  else if (id === E.STEAM) meta[i] = 120 + ((Math.random() * 110) | 0);
+  else if (id === E.TOXIC) meta[i] = 140 + ((Math.random() * 100) | 0);
+  else if (id === E.FIREWORK) meta[i] = 28 + ((Math.random() * 26) | 0);
+  else if (id === E.ANT || id === E.FISH) meta[i] = Math.random() < 0.5 ? 1 : 0;
+  else meta[i] = 0;
+
+  if (id === E.FIRE) temp[i] = 650;
+  else if (id === E.LAVA) temp[i] = 1350;
+  else if (id === E.PLASMA) temp[i] = 4800;
+  else if (id === E.ICE) temp[i] = -18;
+  else if (id === E.SNOW) temp[i] = -6;
+  else if (id === E.NITROGEN) temp[i] = -196;
+  else if (id === E.CLOUD) temp[i] = 8;
+  else if (id === E.RAIN) temp[i] = 12;
+  else if (id === E.WAX) temp[i] = 24;
+  else if (id === E.BUBBLE) meta[i] = 90 + ((Math.random()*80)|0);
+  else if (id === E.STEAM) temp[i] = 115;
+  else if (id === E.EMPTY) temp[i] = 22;
+}
+
+function swapCells(a, b) {
+  let t = grid[a]; grid[a] = grid[b]; grid[b] = t;
+  t = meta[a]; meta[a] = meta[b]; meta[b] = t;
+  t = shade[a]; shade[a] = shade[b]; shade[b] = t;
+  t = elec[a]; elec[a] = elec[b]; elec[b] = t;
+  const tf = temp[a]; temp[a] = temp[b]; temp[b] = tf;
+  stamp[a] = stepId; stamp[b] = stepId;
+}
+
+function explode(cx, cy, radius, power=1) {
+  SFX.boom(power);
+  const r2 = radius * radius;
+  const x0 = Math.max(1, cx - radius), x1 = Math.min(W - 2, cx + radius);
+  const y0 = Math.max(1, cy - radius), y1 = Math.min(H - 2, cy + radius);
+  for (let y = y0; y <= y1; y++) {
+    const dy = y - cy;
+    for (let x = x0; x <= x1; x++) {
+      const dx = x - cx;
+      const d2 = dx * dx + dy * dy;
+      const jitter = r2 * (0.72 + Math.random() * 0.45);
+      if (d2 > jitter) continue;
+      const idx = y * W + x;
+      const c = grid[idx];
+      if (c === E.VOID || c === E.CLONE) continue;
+      // Chain reactions!
+      if (c === E.TNT || c === E.C4 || c === E.GUNPOWDER || c === E.NITRO || c === E.GAS || c === E.GASOLINE) {
+        temp[idx] = 1800;
+        if (d2 < r2 * 0.45) setCell(idx, E.FIRE);
+        continue;
+      }
+      // Tough walls resist outer edge
+      if ((c === E.METAL || c === E.STONE || c === E.BRICK) && d2 > r2 * (0.38 * power)) {
+        temp[idx] += 450 * power;
+        continue;
+      }
+      if (d2 < r2 * 0.55) {
+        setCell(idx, Math.random() < 0.72 ? E.FIRE : (power >= 2 ? E.PLASMA : E.SMOKE));
+        temp[idx] = 1200 * power;
+      } else {
+        setCell(idx, Math.random() < 0.5 ? E.SMOKE : E.FIRE);
+        temp[idx] = 600 * power;
+      }
+      stamp[idx] = stepId;
+    }
+  }
+}
+
+/* ==================== PHYSICS STEP ==================== */
+const DIRS4 = [-1, 1]; // x offsets
+
+function stepSim() {
+  frame++;
+  stepId = (stepId + 1) & 0xFFFF;
+  if (stepId === 0) { stamp.fill(0); stepId = 1; }
+
+  const gDir = gravityDir; // 1 down, -1 up, 2 right, -2 left, 0 zero
+  const horizontal = Math.abs(gDir) === 2;
+  const gvx = gDir === 2 ? 1 : gDir === -2 ? -1 : 0;
+  const gvy = gDir === 1 ? 1 : gDir === -1 ? -1 : 0;
+  const yStart = horizontal ? H - 1 : (gDir >= 0 ? H - 1 : 0);
+  const yEnd   = horizontal ? -1 : (gDir >= 0 ? -1 : H);
+  const yStep  = horizontal ? -1 : (gDir >= 0 ? -1 : 1);
+
+  for (let y = yStart; y !== yEnd; y += yStep) {
+    const rowOff = y * W;
+    const lr = ((y + frame) & 1) === 0;
+    const xStart = horizontal ? (gDir === 2 ? W - 1 : 0) : (lr ? 0 : W - 1);
+    const xEnd   = horizontal ? (gDir === 2 ? -1 : W) : (lr ? W : -1);
+    const xStep  = horizontal ? (gDir === 2 ? -1 : 1) : (lr ? 1 : -1);
+
+    for (let x = xStart; x !== xEnd; x += xStep) {
+      const i = rowOff + x;
+      const c = grid[i];
+      if (c === E.EMPTY) {
+        // Gentle air cooling toward 22°C
+        if ((frame & 3) === 0 && temp[i] !== 22) {
+          temp[i] += (22 - temp[i]) * 0.08;
+          if (Math.abs(temp[i] - 22) < 0.5) temp[i] = 22;
+        }
+        continue;
+      }
+      if (stamp[i] === stepId) continue;
+
+      // ---------- ELECTRICITY PROPAGATION ----------
+      if (elec[i] === 1) {
+        elec[i] = 2;
+        // Spread to 4 neighbors
+        if (x > 0) spreadElec(i - 1);
+        if (x < W - 1) spreadElec(i + 1);
+        if (y > 0) spreadElec(i - W);
+        if (y < H - 1) spreadElec(i + W);
+      } else if (elec[i] === 2) {
+        elec[i] = 0;
+      }
+
+      // ---------- HEAT DIFFUSION (sampled for speed) ----------
+      let t = temp[i];
+      if ((frame + x + y) & 1) {
+        let sum = t, cnt = 1;
+        const rate = (c === E.METAL || c === E.WIRE) ? 0.35 : 0.14;
+        if (x > 0)     { sum += temp[i - 1]; cnt++; }
+        if (x < W - 1) { sum += temp[i + 1]; cnt++; }
+        if (y > 0)     { sum += temp[i - W]; cnt++; }
+        if (y < H - 1) { sum += temp[i + W]; cnt++; }
+        const avg = sum / cnt;
+        t += (avg - t) * rate;
+        temp[i] = t;
+      }
+
+      // ---------- SPECIAL ELEMENTS & REACTIONS ----------
+      if (c === E.BATTERY) {
+        if ((frame & 3) === 0) {
+          if (x > 0 && CONDUCTIVE[grid[i-1]] && elec[i-1] === 0) elec[i-1] = 1;
+          if (x < W-1 && CONDUCTIVE[grid[i+1]] && elec[i+1] === 0) elec[i+1] = 1;
+          if (y > 0 && CONDUCTIVE[grid[i-W]] && elec[i-W] === 0) elec[i-W] = 1;
+          if (y < H-1 && CONDUCTIVE[grid[i+W]] && elec[i+W] === 0) elec[i+W] = 1;
+        }
+        continue;
+      }
+
+      if (c === E.HEATER) {
+        if (elec[i] > 0) meta[i] = 28;
+        if (meta[i] > 0) {
+          meta[i]--;
+          temp[i] = 1150;
+          heatNeighbors(x, y, i, 700);
+        }
+        continue;
+      }
+
+      if (c === E.COOLER) {
+        if (elec[i] > 0) meta[i] = 28;
+        if (meta[i] > 0) {
+          meta[i]--;
+          temp[i] = -140;
+          heatNeighbors(x, y, i, -110);
+        }
+        continue;
+      }
+
+      if (c === E.LED) {
+        if (elec[i] > 0) meta[i] = 18;
+        else if (meta[i] > 0) meta[i]--;
+        continue;
+      }
+
+      if (c === E.FAN) {
+        const range = elec[i] > 0 ? 34 : 18;
+        if (elec[i] > 0) meta[i] = 12; else if (meta[i] > 0) meta[i]--;
+        const pushLen = meta[i] > 0 ? 32 : 16;
+        for (let k = pushLen; k >= 1; k--) {
+          const tx = x + k;
+          if (tx >= W - 1) continue;
+          const ti = rowOff + tx;
+          const tc = grid[ti];
+          if (SOLID[tc]) break;
+          if (tc !== E.EMPTY && grid[ti + 1] === E.EMPTY && Math.random() < 0.55) {
+            swapCells(ti, ti + 1);
+          }
+        }
+        continue;
+      }
+
+      if (c === E.VOID) {
+        if (x > 0 && grid[i-1] !== E.EMPTY && grid[i-1] !== E.VOID) setCell(i-1, E.EMPTY);
+        if (x < W-1 && grid[i+1] !== E.EMPTY && grid[i+1] !== E.VOID) setCell(i+1, E.EMPTY);
+        if (y > 0 && grid[i-W] !== E.EMPTY && grid[i-W] !== E.VOID) setCell(i-W, E.EMPTY);
+        if (y < H-1 && grid[i+W] !== E.EMPTY && grid[i+W] !== E.VOID) setCell(i+W, E.EMPTY);
+        continue;
+      }
+
+      if (c === E.CLONE) {
+        // Memorize first touching non-empty non-clone cell
+        if (meta[i] === 0) {
+          const ns = [x>0?i-1:-1, x<W-1?i+1:-1, y>0?i-W:-1, y<H-1?i+W:-1];
+          for (let k = 0; k < 4; k++) {
+            const ni = ns[k];
+            if (ni >= 0) {
+              const nc = grid[ni];
+              if (nc !== E.EMPTY && nc !== E.CLONE && nc !== E.VOID && nc !== E.BRICK && nc !== E.STONE && nc !== E.METAL && nc !== E.GLASS) {
+                meta[i] = nc;
+                break;
+              }
+            }
+          }
+        } else if ((frame & 1) === 0) {
+          // Emit cloned element into adjacent empty space (prefer bottom!)
+          const targets = [y<H-1?i+W:-1, x>0?i-1:-1, x<W-1?i+1:-1, y>0?i-W:-1];
+          for (let k = 0; k < 4; k++) {
+            const ni = targets[k];
+            if (ni >= 0 && grid[ni] === E.EMPTY && Math.random() < 0.42) {
+              setCell(ni, meta[i]);
+              stamp[ni] = stepId;
+              break;
+            }
+          }
+        }
+        continue;
+      }
+
+      if (c === E.VOLCANO) {
+        temp[i] = 1200;
+        if (y > 0 && Math.random() < 0.25) {
+          const up = i - W;
+          if (grid[up] === E.EMPTY) {
+            setCell(up, Math.random() < 0.65 ? E.LAVA : E.FIRE);
+            stamp[up] = stepId;
+          }
+        }
+        continue;
+      }
+
+      if (c === E.SPONGE) {
+        if (t > 120 && meta[i] > 0) {
+          // Release steam/water when heated
+          if (y > 0 && grid[i-W] === E.EMPTY) {
+            setCell(i-W, E.STEAM); meta[i]--;
+          }
+        } else if (meta[i] < 16) {
+          const ns = [x>0?i-1:-1, x<W-1?i+1:-1, y>0?i-W:-1, y<H-1?i+W:-1];
+          for (let k = 0; k < 4; k++) {
+            const ni = ns[k];
+            if (ni >= 0 && (grid[ni] === E.WATER || grid[ni] === E.SALTWATER || grid[ni] === E.OIL)) {
+              setCell(ni, E.EMPTY);
+              meta[i]++;
+              break;
+            }
+          }
+        }
+        if (t > 360) setCell(i, E.FIRE);
+        continue;
+      }
+
+      // ---------- PHASE CHANGES & TEMPERATURE REACTIONS ----------
+      if (c === E.WATER) {
+        if (t >= 100) { setCell(i, E.STEAM); continue; }
+        if (t <= 0)   { setCell(i, E.ICE); continue; }
+      } else if (c === E.SALTWATER) {
+        if (t >= 106) { setCell(i, Math.random() < 0.5 ? E.STEAM : E.SALT); continue; }
+        if (t <= -14) { setCell(i, E.ICE); continue; }
+      } else if (c === E.ICE) {
+        temp[i] = Math.min(t, t - 0.15);
+        if (t > 4) { setCell(i, E.WATER); continue; }
+        continue;
+      } else if (c === E.SNOW) {
+        if (t > 4) { setCell(i, E.WATER); continue; }
+      } else if (c === E.SAND) {
+        if (t > 1150) { setCell(i, E.GLASS); continue; }
+      } else if (c === E.METAL) {
+        if (t > 1450) { setCell(i, E.LAVA); continue; }
+        continue;
+      } else if (c === E.STONE || c === E.BRICK) {
+        if (t > 1850) { setCell(i, E.LAVA); continue; }
+        continue;
+      } else if (c === E.GLASS) {
+        if (t > 1650) { setCell(i, E.LAVA); continue; }
+        continue;
+      } else if (c === E.MAGNET) {
+        if ((frame & 7) === 0) {
+          let best=-1, bestD=99;
+          for(let my=Math.max(1,y-6);my<=Math.min(H-2,y+6);my++) for(let mx=Math.max(1,x-6);mx<=Math.min(W-2,x+6);mx++) {
+            const d=Math.abs(mx-x)+Math.abs(my-y), mi=my*W+mx;
+            if(d>0 && d<bestD && grid[mi]===E.STEEL) {best=mi;bestD=d;}
+          }
+          if(best>=0) {
+            const sx=best%W, sy=(best/W)|0, dx=Math.sign(x-sx), dy=Math.sign(y-sy);
+            const tx=sx+(Math.abs(x-sx)>=Math.abs(y-sy)?dx:0), ty=sy+(Math.abs(x-sx)>=Math.abs(y-sy)?0:dy), ti=ty*W+tx;
+            if(grid[ti]===E.EMPTY) {setCell(ti,E.STEEL);setCell(best,E.EMPTY);}
+          }
+        }
+        continue;
+      } else if (c === E.STEEL) {
+        if (t > 1650) { setCell(i,E.LAVA); continue; }
+        continue;
+      } else if (c === E.CLAY) {
+        if (t > 950) { setCell(i,E.CERAMIC); continue; }
+        if (hasNeighbor(x,y,i,E.WATER) && Math.random()<0.012) { setCell(i,E.MUD); continue; }
+      } else if (c === E.MUD) {
+        if (t > 125) { setCell(i,E.DIRT); continue; }
+      } else if (c === E.COAL || c === E.CHARCOAL) {
+        if (t > (c === E.COAL ? 310 : 230)) { setCell(i,E.FIRE); temp[i]=760; continue; }
+      } else if (c === E.SALTPETER) {
+        if (t > 230) {
+          if (y>0 && grid[i-W]===E.EMPTY) setCell(i-W,E.FIRE);
+          if (y<H-1 && grid[i+W]===E.GUNPOWDER && Math.random()<0.12) temp[i+W]=300;
+          setCell(i,Math.random()<0.45?E.ASH:E.EMPTY); continue;
+        }
+      } else if (c === E.WAX) {
+        if (t > 68) { setCell(i, E.HONEY); continue; }
+        continue;
+      } else if (c === E.RUBBER) {
+        if (t > 300 && Math.random() < 0.08) { setCell(i, E.FIRE); temp[i] = 680; continue; }
+        continue;
+      } else if (c === E.CERAMIC) {
+        if (t > 2300) { setCell(i, E.LAVA); continue; }
+        continue;
+      } else if (c === E.OBSIDIAN) {
+        if (t > 2600) { setCell(i, E.LAVA); continue; }
+        continue;
+      } else if (c === E.MOSS) {
+        if (t > 180 || hasNeighbor(x,y,i,E.TOXIC)) { setCell(i, E.ASH); continue; }
+        if (Math.random() < 0.012 && (hasNeighbor(x,y,i,E.WATER) || hasNeighbor(x,y,i,E.DIRT))) {
+          const ni = [x>0?i-1:-1,x<W-1?i+1:-1,y>0?i-W:-1,y<H-1?i+W:-1][(Math.random()*4)|0];
+          if (ni >= 0 && grid[ni] === E.EMPTY) setCell(ni,E.MOSS);
+        }
+        continue;
+      } else if (c === E.CORAL) {
+        if (t > 120 || !hasNeighbor(x,y,i,E.WATER)) { if (t > 120) setCell(i,E.ASH); continue; }
+        if (Math.random() < 0.01) {
+          const ni = [x>0?i-1:-1,x<W-1?i+1:-1,y>0?i-W:-1,y<H-1?i+W:-1][(Math.random()*4)|0];
+          if (ni >= 0 && grid[ni] === E.WATER) setCell(ni,E.CORAL);
+        }
+        continue;
+      } else if (c === E.RAIN) {
+        if (t >= 100) { setCell(i,E.STEAM); continue; }
+        if (t <= 0) { setCell(i,E.ICE); continue; }
+      } else if (c === E.HONEY) {
+        if (t > 90) { setCell(i,E.FIRE); continue; }
+      } else if (c === E.WOOD) {
+        if (t > 340 && Math.random() < 0.06) {
+          setCell(i, Math.random() < 0.65 ? E.FIRE : E.ASH);
+          temp[i] = 750;
+          continue;
+        }
+        continue;
+      } else if (c === E.FUSE) {
+        if (t > 240 || elec[i] > 0) {
+          setCell(i, E.FIRE);
+          temp[i] = 900;
+          heatNeighbors(x, y, i, 600);
+          continue;
+        }
+        continue;
+      } else if (c === E.TNT) {
+        if (t > 260) { explode(x, y, 16, 1.5); continue; }
+        continue;
+      } else if (c === E.C4) {
+        if (t > 380 || elec[i] > 0) { explode(x, y, 23, 2.0); continue; }
+        continue;
+      } else if (c === E.GUNPOWDER) {
+        if (t > 210) { explode(x, y, 8, 0.9); continue; }
+      } else if (c === E.NITRO) {
+        if (t > 110) { explode(x, y, 14, 1.3); continue; }
+      } else if (c === E.THERMITE) {
+        if (t > 450) {
+          temp[i] = 2800;
+          heatNeighbors(x, y, i, 2400);
+          if (y < H - 1 && (grid[i+W] === E.METAL || grid[i+W] === E.BRICK || grid[i+W] === E.STONE)) {
+            if (Math.random() < 0.35) setCell(i+W, E.LAVA);
+          }
+          if (Math.random() < 0.07) setCell(i, E.FIRE);
+        }
+      } else if (c === E.URANIUM) {
+        // Count uranium neighbors -> critical mass = NUKE!
+        let uCnt = 0;
+        if (x>0 && grid[i-1]===E.URANIUM) uCnt++;
+        if (x<W-1 && grid[i+1]===E.URANIUM) uCnt++;
+        if (y>0 && grid[i-W]===E.URANIUM) uCnt++;
+        if (y<H-1 && grid[i+W]===E.URANIUM) uCnt++;
+        temp[i] += 1.4 + uCnt * 4.5;
+        if (temp[i] > 1600) { explode(x, y, 32, 2.8); continue; }
+      } else if (c === E.OIL || c === E.GASOLINE) {
+        const ign = c === E.GASOLINE ? 140 : 280;
+        if (t > ign) {
+          setCell(i, E.FIRE);
+          temp[i] = 850;
+          if (y > 0 && grid[i-W] === E.EMPTY && Math.random() < 0.5) setCell(i-W, E.FIRE);
+          continue;
+        }
+        if (c === E.GASOLINE && y > 0 && grid[i-W] === E.EMPTY && Math.random() < 0.008) {
+          setCell(i-W, E.GAS);
+        }
+      } else if (c === E.SULFUR) {
+        if (t > 220) {
+          setCell(i, Math.random() < 0.5 ? E.FIRE : E.TOXIC);
+          temp[i] = 750;
+          continue;
+        }
+      } else if (c === E.SAWDUST) {
+        if (t > 230) { setCell(i, E.FIRE); temp[i] = 700; continue; }
+      } else if (c === E.LAVA) {
+        temp[i] = Math.max(t - 0.12, 1050);
+        if (t < 520) { setCell(i, E.STONE); continue; }
+        // Interact with water -> stone + steam
+        if (touchReplace(x, y, i, E.WATER, E.STEAM) || touchReplace(x, y, i, E.SALTWATER, E.STEAM) || touchReplace(x, y, i, E.ICE, E.STEAM)) {
+          setCell(i, E.STONE); temp[i] = 300; continue;
+        }
+        if (y > 0 && grid[i-W] === E.EMPTY && Math.random() < 0.025) setCell(i-W, E.FIRE);
+      } else if (c === E.NITROGEN) {
+        temp[i] = -196;
+        heatNeighbors(x, y, i, -180);
+        if (Math.random() < 0.04) { setCell(i, E.STEAM); temp[i] = -30; continue; }
+      } else if (c === E.ACID) {
+        // Corrodes neighbors except Glass, Acid, Empty, Void, Clone
+        const ns = [y<H-1?i+W:-1, x>0?i-1:-1, x<W-1?i+1:-1, y>0?i-W:-1];
+        for (let k = 0; k < 4; k++) {
+          const ni = ns[k];
+          if (ni < 0) continue;
+          const nc = grid[ni];
+          if (nc !== E.EMPTY && nc !== E.ACID && nc !== E.GLASS && nc !== E.VOID && nc !== E.CLONE && nc !== E.TOXIC) {
+            if (Math.random() < (nc === E.METAL || nc === E.STONE || nc === E.BRICK ? 0.08 : 0.28)) {
+              setCell(ni, Math.random() < 0.3 ? E.TOXIC : E.EMPTY);
+              if (Math.random() < 0.55) { setCell(i, E.EMPTY); break; }
+            }
+          }
+        }
+        if (grid[i] !== E.ACID) continue;
+      } else if (c === E.SALT) {
+        // Dissolve in water -> saltwater, melt ice
+        if (touchReplace(x, y, i, E.WATER, E.SALTWATER)) { setCell(i, E.EMPTY); continue; }
+        if (touchReplace(x, y, i, E.ICE, E.SALTWATER)) { setCell(i, E.EMPTY); continue; }
+      } else if (c === E.CONCRETE) {
+        if (hasNeighbor(x, y, i, E.WATER)) {
+          if (Math.random() < 0.14) { setCell(i, E.STONE); continue; }
+        }
+      } else if (c === E.SEED) {
+        if (t > 280) { setCell(i, E.FIRE); continue; }
+        if (hasNeighbor(x, y, i, E.WATER) || hasNeighbor(x, y, i, E.DIRT)) {
+          if (Math.random() < 0.15) { setCell(i, E.PLANT); continue; }
+        }
+      } else if (c === E.PLANT) {
+        if (t > 240) { setCell(i, E.FIRE); temp[i] = 650; continue; }
+        if (hasNeighbor(x, y, i, E.TOXIC)) { setCell(i, E.ASH); continue; }
+        // Drink adjacent water and grow upwards/sideways!
+        if (touchReplace(x, y, i, E.WATER, E.PLANT)) {
+          if (y > 0 && grid[i-W] === E.EMPTY && Math.random() < 0.65) setCell(i-W, E.PLANT);
+        } else if (y > 1 && Math.random() < 0.012 && (hasNeighbor(x, y, i, E.DIRT) || hasNeighbor(x, y, i, E.WATER))) {
+          const dx = randDir3();
+          const nx = x + dx;
+          if (nx >= 0 && nx < W && grid[(y-1)*W + nx] === E.EMPTY) setCell((y-1)*W + nx, E.PLANT);
+        }
+        continue;
+      } else if (c === E.ALGAE) {
+        if (t > 220) { setCell(i, E.FIRE); continue; }
+        if (Math.random() < 0.025) {
+          const dx = randDir3(), dy = Math.random() < 0.7 ? -1 : 0;
+          const nx = x + dx, ny = y + dy;
+          if (nx >= 0 && nx < W && ny >= 0 && ny < H && grid[ny*W+nx] === E.WATER) {
+            setCell(ny*W+nx, E.ALGAE);
+          }
+        }
+        continue;
+      } else if (c === E.VIRUS) {
+        if (t > 180) { setCell(i, E.SMOKE); continue; }
+        if (Math.random() < 0.06) {
+          const ns = [x>0?i-1:-1, x<W-1?i+1:-1, y>0?i-W:-1, y<H-1?i+W:-1];
+          const ni = ns[(Math.random() * 4) | 0];
+          if (ni >= 0) {
+            const nc = grid[ni];
+            if (nc !== E.EMPTY && nc !== E.VIRUS && nc !== E.VOID && nc !== E.FIRE && nc !== E.LAVA && nc !== E.ACID && nc !== E.GLASS) {
+              setCell(ni, E.VIRUS);
+            }
+          }
+        }
+        continue;
+      } else if (c === E.FOAM) {
+        if (touchReplace(x, y, i, E.FIRE, E.STEAM)) { setCell(i, E.EMPTY); continue; }
+      } else if (c === E.ANT) {
+        if (t > 90 || hasNeighbor(x, y, i, E.ACID) || hasNeighbor(x, y, i, E.TOXIC)) { setCell(i, E.ASH); continue; }
+        stepAnt(x, y, i);
+        continue;
+      } else if (c === E.FISH) {
+        if (t > 75 || hasNeighbor(x, y, i, E.ACID) || hasNeighbor(x, y, i, E.TOXIC)) { setCell(i, E.ASH); continue; }
+        stepFish(x, y, i);
+        continue;
+      }
+
+      // ---------- GASES & FIRE ----------
+      if (GAS_T[c]) {
+        if (c === E.BUBBLE) {
+          if (hasNeighbor(x,y,i,E.FIRE) || hasNeighbor(x,y,i,E.LAVA) || meta[i]-- <= 0) { setCell(i,E.EMPTY); continue; }
+        }
+        if (c === E.CLOUD) {
+          if ((frame & 7) === 0 && x > 0 && grid[i-1] === E.EMPTY && Math.random() < 0.25) swapCells(i,i-1);
+          if (Math.random() < 0.0008 && y < H-2 && grid[i+W] === E.EMPTY) setCell(i+W,E.RAIN);
+          continue;
+        }
+        if (c === E.OXYGEN) {
+          if (hasNeighbor(x,y,i,E.FIRE) || hasNeighbor(x,y,i,E.PLASMA)) { setCell(i,E.EMPTY); continue; }
+        }
+        if (c === E.FIRE || c === E.PLASMA) {
+          temp[i] = c === E.PLASMA ? 4500 : 720;
+          heatNeighbors(x, y, i, c === E.PLASMA ? 2200 : 380);
+          if (c === E.FIRE && hasNeighbor(x,y,i,E.OXYGEN)) { temp[i] += 120; if (meta[i] < 55) meta[i] += 2; }
+          // Extinguish in water
+          if (touchReplace(x, y, i, E.WATER, E.STEAM)) { setCell(i, E.SMOKE); continue; }
+          if (meta[i] <= 1) {
+            setCell(i, c === E.FIRE && Math.random() < 0.22 ? E.SMOKE : E.EMPTY);
+            continue;
+          }
+          meta[i]--;
+        } else if (c === E.FIREWORK) {
+          meta[i]--;
+          if (meta[i] <= 0 || y <= 3 || (y > 0 && grid[i-W] !== E.EMPTY)) {
+            explodeFirework(x, y);
+            continue;
+          }
+          if (y < H - 1 && grid[i+W] === E.EMPTY) setCell(i+W, E.FIRE, 8);
+          if (y > 0 && grid[i-W] === E.EMPTY) swapCells(i, i-W);
+          continue;
+        } else if (c === E.GAS) {
+          if (t > 180 || elec[i] > 0) { explode(x, y, 10, 1.0); continue; }
+        } else if (c === E.STEAM) {
+          meta[i]--;
+          if (meta[i] <= 0 || t < 50) {
+            setCell(i, Math.random() < 0.65 ? E.WATER : E.EMPTY);
+            continue;
+          }
+        } else if (c === E.SMOKE || c === E.TOXIC) {
+          meta[i]--;
+          if (meta[i] <= 0) { setCell(i, E.EMPTY); continue; }
+        }
+
+        // Gas rising movement
+        const rx = -gvx, ry = -gvy; // gases rise opposite to gravity
+        const sideX = gvx ? 0 : 1, sideY = gvx ? 1 : 0;
+        const drift = randDir3();
+        const tx = x + rx + sideX * drift, ty = y + ry + sideY * drift;
+        if (tx >= 0 && tx < W && ty >= 0 && ty < H) {
+          const ti = ty * W + tx, tc = grid[ti];
+          if (tc === E.EMPTY || (LIQUID[tc] && Math.random() < 0.35)) { swapCells(i,ti); continue; }
+        }
+        const side = Math.random() < 0.5 ? -1 : 1;
+        const sx = x + sideX * side, sy = y + sideY * side;
+        if (sx >= 0 && sx < W && sy >= 0 && sy < H && grid[sy*W+sx] === E.EMPTY) swapCells(i,sy*W+sx);
+        continue;
+      }
+
+      if (gDir === 0) continue; // Zero gravity freezes powders & liquids in place
+
+      // ---------- POWDERS ----------
+      if (POWDER[c]) {
+        if (c === E.SNOW && (frame & 1) === 0) continue;
+        const perpX = gvx ? 0 : 1, perpY = gvx ? 1 : 0;
+        const nx = x + gvx, ny = y + gvy;
+        if (nx >= 0 && nx < W && ny >= 0 && ny < H) {
+          const below = ny * W + nx, bc = grid[below];
+          if (bc === E.EMPTY || (DENSITY[c] > DENSITY[bc] && (LIQUID[bc] || GAS_T[bc]))) { swapCells(i, below); continue; }
+          const sign = Math.random() < 0.5 ? -1 : 1;
+          for (const side of [sign,-sign]) {
+            const tx = nx + perpX * side, ty = ny + perpY * side;
+            if (tx < 0 || tx >= W || ty < 0 || ty >= H) continue;
+            const bi = ty * W + tx, tc = grid[bi];
+            if (tc === E.EMPTY || (DENSITY[c] > DENSITY[tc] && (LIQUID[tc] || GAS_T[tc]))) { swapCells(i,bi); break; }
+          }
+        }
+        continue;
+      }
+
+      // ---------- LIQUIDS ----------
+      if (LIQUID[c]) {
+        if ((c === E.HONEY || c === E.MUD) && (frame & (c === E.HONEY ? 3 : 1)) !== 0) continue;
+        const perpX = gvx ? 0 : 1, perpY = gvx ? 1 : 0;
+        const nx = x + gvx, ny = y + gvy;
+        if (nx >= 0 && nx < W && ny >= 0 && ny < H) {
+          const below = ny * W + nx, bc = grid[below];
+          if (bc === E.EMPTY || (DENSITY[c] > DENSITY[bc] && !SOLID[bc] && !POWDER[bc]) || (c === E.MERCURY && POWDER[bc])) { swapCells(i,below); continue; }
+          const sign = Math.random() < 0.5 ? -1 : 1;
+          for (const side of [sign,-sign]) {
+            const tx = nx + perpX * side, ty = ny + perpY * side;
+            if (tx < 0 || tx >= W || ty < 0 || ty >= H) continue;
+            const bi = ty * W + tx, tc = grid[bi];
+            if (tc === E.EMPTY || (DENSITY[c] > DENSITY[tc] && !SOLID[tc] && !POWDER[tc])) { swapCells(i,bi); break; }
+          }
+        }
+        const disp = c === E.LAVA || c === E.HONEY || c === E.MUD ? 1 : (c === E.OIL ? 3 : 5);
+        const dir = Math.random() < 0.5 ? -1 : 1;
+        for (let step = 1; step <= disp; step++) {
+          const tx = x + perpX * dir * step, ty = y + perpY * dir * step;
+          if (tx < 0 || tx >= W || ty < 0 || ty >= H) break;
+          const ni = ty * W + tx, nc = grid[ni];
+          if (nc === E.EMPTY) { swapCells(i,ni); break; }
+          if (LIQUID[nc] && DENSITY[c] > DENSITY[nc] && Math.random() < 0.35) { swapCells(i,ni); break; }
+          if (SOLID[nc] || POWDER[nc]) break;
+        }
+      }
+    }
+  }
+}
+
+function randDir3() { return ((Math.random() * 3) | 0) - 1; }
+
+function spreadElec(ni) {
+  const nc = grid[ni];
+  if (CONDUCTIVE[nc] && elec[ni] === 0) {
+    elec[ni] = 1;
+  } else if (FLAMMABLE[nc] >= 80) {
+    temp[ni] = Math.max(temp[ni], 500);
+  }
+}
+
+function heatNeighbors(x, y, i, targetT) {
+  if (x > 0)     temp[i-1] += (targetT - temp[i-1]) * 0.25;
+  if (x < W - 1) temp[i+1] += (targetT - temp[i+1]) * 0.25;
+  if (y > 0)     temp[i-W] += (targetT - temp[i-W]) * 0.25;
+  if (y < H - 1) temp[i+W] += (targetT - temp[i+W]) * 0.25;
+}
+
+function hasNeighbor(x, y, i, targetId) {
+  return (x > 0 && grid[i-1] === targetId) ||
+         (x < W-1 && grid[i+1] === targetId) ||
+         (y > 0 && grid[i-W] === targetId) ||
+         (y < H-1 && grid[i+W] === targetId);
+}
+
+function touchReplace(x, y, i, targetId, replaceWith) {
+  if (x > 0 && grid[i-1] === targetId) { setCell(i-1, replaceWith); return true; }
+  if (x < W-1 && grid[i+1] === targetId) { setCell(i+1, replaceWith); return true; }
+  if (y > 0 && grid[i-W] === targetId) { setCell(i-W, replaceWith); return true; }
+  if (y < H-1 && grid[i+W] === targetId) { setCell(i+W, replaceWith); return true; }
+  return false;
+}
+
+function explodeFirework(cx, cy) {
+  SFX.boom(0.7);
+  setCell(cy * W + cx, E.EMPTY);
+  const hue = (Math.random() * 255) | 0;
+  for (let a = 0; a < 28; a++) {
+    const ang = (a / 28) * Math.PI * 2 + Math.random() * 0.2;
+    const rad = 3 + Math.random() * 9;
+    const nx = Math.round(cx + Math.cos(ang) * rad);
+    const ny = Math.round(cy + Math.sin(ang) * rad);
+    if (nx > 1 && nx < W - 1 && ny > 1 && ny < H - 1 && grid[ny*W+nx] === E.EMPTY) {
+      setCell(ny*W+nx, E.PLASMA, 18 + ((Math.random() * 18) | 0));
+      shade[ny*W+nx] = (hue + ((Math.random() * 40) | 0)) & 255;
+      stamp[ny*W+nx] = stepId;
+    }
+  }
+}
+
+function stepAnt(x, y, i) {
+  if (y < H - 1 && grid[i + W] === E.EMPTY) { swapCells(i, i + W); return; }
+  let dir = meta[i] === 1 ? 1 : -1;
+  if (Math.random() < 0.04) { dir = -dir; meta[i] = dir === 1 ? 1 : 0; }
+  const nx = x + dir;
+  if (nx >= 0 && nx < W) {
+    const ni = y * W + nx;
+    const nc = grid[ni];
+    if (nc === E.EMPTY) { swapCells(i, ni); return; }
+    // Climb 1px step
+    if (y > 0 && grid[ni - W] === E.EMPTY) { swapCells(i, ni - W); return; }
+    // Dig through dirt / sand / wood / plant
+    if ((nc === E.DIRT || nc === E.SAND || nc === E.WOOD || nc === E.PLANT) && Math.random() < 0.2) {
+      setCell(ni, E.EMPTY); swapCells(i, ni); return;
+    }
+  }
+  meta[i] = dir === 1 ? 0 : 1; // turn around
+}
+
+function stepFish(x, y, i) {
+  let dir = meta[i] === 1 ? 1 : -1;
+  if (Math.random() < 0.04) { dir = -dir; meta[i] = dir === 1 ? 1 : 0; }
+  const dy = Math.random() < 0.35 ? (Math.random() < 0.5 ? -1 : 1) : 0;
+  const nx = x + dir, ny = y + dy;
+  if (nx >= 0 && nx < W && ny >= 0 && ny < H) {
+    const ni = ny * W + nx;
+    if (grid[ni] === E.WATER || grid[ni] === E.SALTWATER) {
+      swapCells(i, ni); return;
+    }
+  }
+  // Fall if in air
+  if (y < H - 1 && grid[i + W] === E.EMPTY) { swapCells(i, i + W); return; }
+  meta[i] = dir === 1 ? 0 : 1;
+}
+
+/* ==================== RENDERING (TEXTURED PIXELS + HEAT VISION) ==================== */
+function renderSim() {
+  if (heatVision) {
+    renderHeatVision();
+    ctx.putImageData(imgData, 0, 0);
+    return;
+  }
+
+  for (let y = 0; y < H; y++) {
+    const row = y * W;
+    for (let x = 0; x < W; x++) {
+      const i = row + x;
+      const c = grid[i];
+      if (c === E.EMPTY) { buf32[i] = bgPacked; continue; }
+
+      // Active electric spark flash!
+      if (elec[i] === 1) { buf32[i] = packRGBA(255, 250, 120); continue; }
+
+      const s = shade[i]; // 0..255
+      const v = (s & 31) - 15; // -15..+16
+      let col;
+
+      switch (c) {
+        case E.SAND:
+          col = packRGBA(255, Math.min(255, 206 + v * 2), Math.max(0, 18 + (s & 31)));
+          break;
+        case E.WATER: {
+          const sh = ((s + frame * 3) & 31);
+          col = packRGBA(0, 75 + sh * 2, 235 + (sh >> 1));
+          break;
+        }
+        case E.SALTWATER: {
+          const sh = ((s + frame * 2) & 31);
+          col = packRGBA(45 + sh, 125 + sh * 2, 240);
+          break;
+        }
+        case E.OIL:
+          col = packRGBA(158 + (v >> 1), 130 + (v >> 1), 14);
+          break;
+        case E.GASOLINE:
+          col = packRGBA(218 + v, 165 + v, 35);
+          break;
+        case E.SALT:
+          col = packRGBA(240 + (s & 15), 240 + (s & 15), 244 + (s & 11));
+          break;
+        case E.SNOW:
+          col = packRGBA(225 + (s & 28), 240 + (s & 15), 255);
+          break;
+        case E.ICE: {
+          const streak = ((x + y) & 7) === 0 ? 35 : 0;
+          col = packRGBA(120 + streak, 210 + (v >> 1) + streak, 255);
+          break;
+        }
+        case E.BRICK: {
+          // Authentic SmellyMoo pixel brick wall with light grey mortar!
+          const off = ((y >> 2) & 1) ? 4 : 0;
+          if ((y & 3) === 0 || ((x + off) & 7) === 0) {
+            col = packRGBA(182, 182, 186);
+          } else {
+            col = packRGBA(168 + v, 42 + (v >> 1), 36 + (v >> 1));
+          }
+          break;
+        }
+        case E.STONE:
+          col = packRGBA(118 + v, 122 + v, 128 + v);
+          break;
+        case E.METAL: {
+          const rivet = (x % 6 === 1 && y % 6 === 1) ? -32 : ((x % 6 === 0 || y % 6 === 0) ? 18 : 0);
+          const m = Math.max(40, Math.min(240, 145 + rivet + (v >> 1)));
+          const hot = Math.min(110, Math.max(0, (temp[i] - 300) * 0.12)) | 0;
+          col = packRGBA(Math.min(255, m + hot), Math.max(30, m - (hot >> 2)), Math.max(30, m - (hot >> 1)));
+          break;
+        }
+        case E.WOOD: {
+          const gr = (((y + ((x >> 3) & 1)) & 3) === 0) ? -18 : 8;
+          col = packRGBA(130 + gr + (v >> 1), 76 + gr, 38 + (v >> 1));
+          break;
+        }
+        case E.GLASS: {
+          const gl = ((x - y) & 15) === 0 ? 75 : 0;
+          col = packRGBA(110 + gl, 175 + (gl >> 1), 215 + (gl >> 2));
+          break;
+        }
+        case E.FIRE: {
+          const life = meta[i];
+          if (life > 30) col = packRGBA(255, 240, 90);
+          else if (life > 16) col = packRGBA(255, 130 + (life * 4), 10);
+          else col = packRGBA(210 + (life * 2), 35 + life * 3, 5);
+          break;
+        }
+        case E.LAVA: {
+          const fl = ((s + frame * 2) & 31);
+          col = packRGBA(255, 55 + fl * 3, fl > 22 ? 40 : 0);
+          break;
+        }
+        case E.PLASMA: {
+          const p = (s + frame * 7) & 63;
+          col = packRGBA(210 + (p >> 1), 70 + p * 2, 255);
+          break;
+        }
+        case E.PLANT:
+          col = packRGBA(22 + (s & 15), 185 + v * 2, 28 + (s & 15));
+          break;
+        case E.ALGAE:
+          col = packRGBA(16, 145 + v * 2, 55 + (s & 31));
+          break;
+        case E.SEED:
+          col = packRGBA(175 + v, 118 + v, 42);
+          break;
+        case E.GUNPOWDER:
+          col = packRGBA(64 + v, 66 + v, 72 + v);
+          break;
+        case E.TNT: {
+          const band = (y % 7 === 3 || y % 7 === 4);
+          col = band ? packRGBA(240, 240, 240) : packRGBA(210 + v, 32, 32);
+          break;
+        }
+        case E.C4:
+          col = packRGBA(102 + v, 128 + v, 58 + (v >> 1));
+          break;
+        case E.FUSE:
+          col = packRGBA(155 + v, 112 + v, 68);
+          break;
+        case E.ACID:
+          col = packRGBA(70 + (s & 31), 240 + (s & 15), 25);
+          break;
+        case E.GAS:
+          col = packRGBA(190, 185, 75);
+          break;
+        case E.STEAM:
+          col = packRGBA(195 + (s & 31), 215 + (s & 31), 232);
+          break;
+        case E.SMOKE: {
+          const k = Math.min(130, 55 + (meta[i] >> 1));
+          col = packRGBA(k, k, k + 5);
+          break;
+        }
+        case E.TOXIC:
+          col = packRGBA(65, 200 + (s & 31), 90);
+          break;
+        case E.CONCRETE:
+          col = packRGBA(145 + v, 148 + v, 152 + v);
+          break;
+        case E.DIRT:
+          col = packRGBA(112 + v, 74 + v, 42 + (v >> 1));
+          break;
+        case E.SAWDUST:
+          col = packRGBA(205 + v, 152 + v, 78 + (v >> 1));
+          break;
+        case E.ASH:
+          col = packRGBA(100 + v, 102 + v, 108 + v);
+          break;
+        case E.SULFUR:
+          col = packRGBA(238 + (s & 15), 218 + v, 24);
+          break;
+        case E.MERCURY: {
+          const m = 195 + ((s + frame * 3) & 31);
+          col = packRGBA(m, m + 5, m + 14);
+          break;
+        }
+        case E.NITROGEN:
+          col = packRGBA(115, 215 + (s & 31), 255);
+          break;
+        case E.NITRO:
+          col = packRGBA(28, 210 + v, 128 + v);
+          break;
+        case E.THERMITE:
+          col = temp[i] > 450 ? packRGBA(255, 255, 220) : packRGBA(166 + v, 78 + v, 36);
+          break;
+        case E.URANIUM: {
+          const g = 180 + ((s + frame * 4) & 63);
+          col = packRGBA(50, Math.min(255, g), 65);
+          break;
+        }
+        case E.VIRUS:
+          col = packRGBA(175 + v, 48, 220 + (s & 31));
+          break;
+        case E.ANT:
+          col = packRGBA(210, 88, 30);
+          break;
+        case E.FISH:
+          col = packRGBA(255, 130 + (s & 31), 30);
+          break;
+        case E.SPONGE: {
+          const wet = meta[i] * 5;
+          const hole = ((x + y) & 3) === 0 ? -28 : 0;
+          col = packRGBA(Math.max(40, 232 + hole - wet), Math.max(40, 200 + hole - (wet >> 1)), Math.min(240, 42 + wet * 2));
+          break;
+        }
+        case E.VOID:
+          col = ((x + y + frame) & 3) === 0 ? packRGBA(130, 45, 180) : packRGBA(18, 12, 26);
+          break;
+        case E.CLONE:
+          col = ((x ^ y) & 2) ? packRGBA(236, 72, 153) : packRGBA(250, 204, 21);
+          break;
+        case E.BATTERY:
+          col = (y & 2) ? packRGBA(250, 204, 21) : packRGBA(34, 197, 94);
+          break;
+        case E.WIRE:
+          col = elec[i] === 2 ? packRGBA(255, 180, 60) : packRGBA(175, 92, 42);
+          break;
+        case E.HEATER:
+          col = meta[i] > 0 ? packRGBA(255, 85, 30) : packRGBA(120, 45, 45);
+          break;
+        case E.COOLER:
+          col = meta[i] > 0 ? packRGBA(70, 220, 255) : packRGBA(42, 85, 120);
+          break;
+        case E.LED:
+          col = meta[i] > 0 ? packRGBA(255, 255, 110) : packRGBA(85, 85, 65);
+          break;
+        case E.FAN:
+          col = (((x + y + (meta[i] > 0 ? frame * 2 : frame)) & 3) === 0) ? packRGBA(56, 189, 248) : packRGBA(71, 85, 105);
+          break;
+        case E.VOLCANO:
+          col = ((x + y) & 3) === 0 ? packRGBA(220, 50, 20) : packRGBA(85, 55, 50);
+          break;
+        case E.FIREWORK:
+          col = packRGBA(255, 90, 170);
+          break;
+        case E.FOAM:
+          col = packRGBA(240 + (s & 15), 245 + (s & 10), 255);
+          break;
+        case E.CLOUD: col = packRGBA(195+(s&31),205+(s&31),220+(s&31)); break;
+        case E.RAIN: col = packRGBA(45,150+(s&31),245); break;
+        case E.OXYGEN: col = ((x+y+frame)&3)===0 ? packRGBA(185,235,255) : packRGBA(120,195,235); break;
+        case E.MOSS: col = packRGBA(55+(s&15),125+(s&31),45); break;
+        case E.WAX: col = packRGBA(245,205+(s&25),55); break;
+        case E.RUBBER: col = packRGBA(45+(s&12),52+(s&12),64+(s&12)); break;
+        case E.CERAMIC: col = packRGBA(220+(s&20),175+(s&20),155+(s&20)); break;
+        case E.OBSIDIAN: col = ((x+y)&3)===0 ? packRGBA(105,65,160) : packRGBA(43,24,73); break;
+        case E.CORAL: col = packRGBA(245,95+(s&31),120+(s&31)); break;
+        case E.HONEY: col = packRGBA(235+(s&16),155+(s&25),12); break;
+        case E.MUD: col = packRGBA(92+(s&13),61+(s&11),38); break;
+        case E.COPPER: col = packRGBA(185+(s&25),92+(s&17),48); break;
+        case E.COAL: col = packRGBA(42+(s&12),44+(s&12),49+(s&12)); break;
+        case E.CHARCOAL: col = packRGBA(29+(s&10),30+(s&10),34+(s&10)); break;
+        case E.BUBBLE: col = ((x+y+frame)&3)===0 ? packRGBA(225,250,255) : packRGBA(120,205,235); break;
+        case E.SALTPETER: col = packRGBA(224+(s&20),218+(s&18),185+(s&20)); break;
+        case E.STEEL: col = packRGBA(105+(s&25),126+(s&25),145+(s&25)); break;
+        case E.MAGNET: col = ((x&7)<3) ? packRGBA(220,45,55) : packRGBA(225,230,235); break;
+        case E.CLAY: col = packRGBA(155+(s&18),91+(s&15),65+(s&12)); break;
+        case E.GRAVEL: col = packRGBA(112+(s&35),119+(s&35),126+(s&35)); break;
+        default:
+          col = packRGBA(200, 200, 200);
+      }
+      buf32[i] = col;
+    }
+  }
+  ctx.putImageData(imgData, 0, 0);
+}
+
+function renderHeatVision() {
+  for (let i = 0; i < N; i++) {
+    const t = temp[i];
+    let r, g, b;
+    if (t < 0) {
+      const k = Math.max(0, Math.min(1, -t / 180));
+      r = (20 * k) | 0; g = (80 + 160 * k) | 0; b = 255;
+    } else if (t < 80) {
+      const k = t / 80;
+      r = (10 + k * 20) | 0; g = (15 + k * 90) | 0; b = (60 + k * 140) | 0;
+    } else if (t < 350) {
+      const k = (t - 80) / 270;
+      r = (30 + k * 215) | 0; g = (105 + k * 140) | 0; b = (200 - k * 190) | 0;
+    } else if (t < 1100) {
+      const k = (t - 350) / 750;
+      r = 255; g = (245 - k * 185) | 0; b = (10 + k * 20) | 0;
+    } else {
+      const k = Math.min(1, (t - 1100) / 1400);
+      r = 255; g = (60 + k * 195) | 0; b = (30 + k * 225) | 0;
+    }
+    // Slight outline for solid matter
+    if (grid[i] !== E.EMPTY && t > 15 && t < 40) { r += 16; g += 18; b += 22; }
+    buf32[i] = packRGBA(Math.min(255,r), Math.min(255,g), Math.min(255,b));
+  }
+}
+
+/* ==================== DRAWING & TOUCH / PINCH-ZOOM ==================== */
+let selectedId = E.SAND;
+let brushSize = 5;
+let brushMode = 'circle'; // circle, spray, line, fill
+let zoom = 1, panX = 0, panY = 0;
+
+function applyViewTransform() {
+  canvas.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom})`;
+  document.getElementById('btnResetZoom').style.display = zoom > 1.02 ? 'block' : 'none';
+}
+
+function screenToGrid(clientX, clientY) {
+  const rect = stageWrap.getBoundingClientRect();
+  const lx = (clientX - rect.left - panX) / zoom;
+  const ly = (clientY - rect.top - panY) / zoom;
+  return {
+    gx: Math.floor((lx / rect.width) * W),
+    gy: Math.floor((ly / rect.height) * H)
+  };
+}
+
+function paintBrush(cx, cy) {
+  const r = brushSize;
+  const r2 = r * r;
+  const spray = brushMode === 'spray';
+  for (let dy = -r; dy <= r; dy++) {
+    const y = cy + dy;
+    if (y < 0 || y >= H) continue;
+    for (let dx = -r; dx <= r; dx++) {
+      if (dx * dx + dy * dy > r2) continue;
+      const x = cx + dx;
+      if (x < 0 || x >= W) continue;
+      if (spray && Math.random() > 0.25) continue;
+      // Natural scatter for powders/liquids when brush > 2
+      if (!spray && r >= 2 && (POWDER[selectedId] || GAS_T[selectedId]) && Math.random() > 0.65) continue;
+
+      const idx = y * W + x;
+      if (selectedId === E.TOOL_HEAT) { temp[idx] = Math.min(3500, temp[idx] + 220); continue; }
+      if (selectedId === E.TOOL_COOL) { temp[idx] = Math.max(-220, temp[idx] - 180); continue; }
+      if (selectedId === E.TOOL_SPARK) {
+        SFX.zap();
+        if (CONDUCTIVE[grid[idx]]) elec[idx] = 1;
+        else if (grid[idx] === E.EMPTY) { setCell(idx, E.FIRE, 10); temp[idx] = 900; }
+        else temp[idx] += 450;
+        continue;
+      }
+      if (selectedId === E.EMPTY) {
+        setCell(idx, E.EMPTY);
+      } else {
+        const cur = grid[idx];
+        if (cur === E.EMPTY || overwriteSolid || (!SOLID[cur] && SOLID[selectedId])) {
+          setCell(idx, selectedId);
+        }
+      }
+    }
+  }
+}
+
+function paintLine(x0, y0, x1, y1) {
+  const dx = Math.abs(x1 - x0), dy = Math.abs(y1 - y0);
+  const sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
+  let err = dx - dy;
+  while (true) {
+    paintBrush(x0, y0);
+    if (x0 === x1 && y0 === y1) break;
+    const e2 = err * 2;
+    if (e2 > -dy) { err -= dy; x0 += sx; }
+    if (e2 < dx)  { err += dx; y0 += sy; }
+  }
+}
+
+function floodFill(sx, sy) {
+  if (sx < 0 || sx >= W || sy < 0 || sy >= H) return;
+  if (selectedId >= 100) { paintBrush(sx, sy); return; }
+  const target = grid[sy * W + sx];
+  if (target === selectedId) return;
+  const q = [sy * W + sx];
+  const seen = new Uint8Array(N);
+  seen[q[0]] = 1;
+  let count = 0;
+  while (q.length && count < 18000) {
+    const i = q.pop();
+    setCell(i, selectedId);
+    count++;
+    const x = i % W, y = (i / W) | 0;
+    if (x > 0 && !seen[i-1] && grid[i-1] === target) { seen[i-1]=1; q.push(i-1); }
+    if (x < W-1 && !seen[i+1] && grid[i+1] === target) { seen[i+1]=1; q.push(i+1); }
+    if (y > 0 && !seen[i-W] && grid[i-W] === target) { seen[i-W]=1; q.push(i-W); }
+    if (y < H-1 && !seen[i+W] && grid[i+W] === target) { seen[i+W]=1; q.push(i+W); }
+  }
+}
+
+// Pointer / Multi-touch handling
+const pointers = new Map();
+let isDrawing = false;
+let lastG = null;
+let lineStart = null, lineCur = null;
+let pinchStartDist = 0, pinchStartZoom = 1, pinchMid = null, panStart = null;
+
+canvas.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  SFX.unlock();
+  startMotionSensor();
+  closePopovers();
+  canvas.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+  if (pointers.size === 2) {
+    isDrawing = false;
+    lineStart = null;
+    clearOverlay();
+    const [p1, p2] = [...pointers.values()];
+    pinchStartDist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+    pinchStartZoom = zoom;
+    pinchMid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+    panStart = { x: panX, y: panY };
+    return;
+  }
+
+  const g = screenToGrid(e.clientX, e.clientY);
+  updateTempReadout(g.gx, g.gy);
+  pushUndo();
+
+  if (brushMode === 'fill') {
+    floodFill(g.gx, g.gy);
+    return;
+  }
+  if (brushMode === 'line') {
+    lineStart = g; lineCur = g;
+    drawLineOverlay();
+    return;
+  }
+  isDrawing = true;
+  lastG = g;
+  paintBrush(g.gx, g.gy);
+});
+
+canvas.addEventListener('pointermove', e => {
+  if (!pointers.has(e.pointerId)) return;
+  e.preventDefault();
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+  if (pointers.size === 2) {
+    const [p1, p2] = [...pointers.values()];
+    const dist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+    const midX = (p1.x + p2.x) / 2, midY = (p1.y + p2.y) / 2;
+    const rect = stageWrap.getBoundingClientRect();
+    const newZoom = Math.max(1, Math.min(4, pinchStartZoom * (dist / Math.max(10, pinchStartDist))));
+    const ratio = newZoom / pinchStartZoom;
+    panX = (midX - rect.left) - ((pinchMid.x - rect.left) - panStart.x) * ratio;
+    panY = (midY - rect.top)  - ((pinchMid.y - rect.top)  - panStart.y) * ratio;
+    zoom = newZoom;
+    clampPan();
+    applyViewTransform();
+    return;
+  }
+
+  const g = screenToGrid(e.clientX, e.clientY);
+  updateTempReadout(g.gx, g.gy);
+  if (brushMode === 'line' && lineStart) {
+    lineCur = g;
+    drawLineOverlay();
+    return;
+  }
+  if (isDrawing && lastG) {
+    paintLine(lastG.gx, lastG.gy, g.gx, g.gy);
+    lastG = g;
+  }
+});
+
+function endPointer(e) {
+  pointers.delete(e.pointerId);
+  if (brushMode === 'line' && lineStart && lineCur) {
+    paintLine(lineStart.gx, lineStart.gy, lineCur.gx, lineCur.gy);
+    lineStart = null; lineCur = null;
+    clearOverlay();
+  }
+  if (pointers.size < 1) { isDrawing = false; lastG = null; }
+}
+canvas.addEventListener('pointerup', endPointer);
+canvas.addEventListener('pointercancel', endPointer);
+
+function clampPan() {
+  const rect = stageWrap.getBoundingClientRect();
+  const minX = rect.width * (1 - zoom), minY = rect.height * (1 - zoom);
+  panX = Math.min(0, Math.max(minX, panX));
+  panY = Math.min(0, Math.max(minY, panY));
+}
+
+function clearOverlay() { oCtx.clearRect(0, 0, oCanvas.width, oCanvas.height); }
+function drawLineOverlay() {
+  clearOverlay();
+  if (!lineStart || !lineCur) return;
+  const rect = stageWrap.getBoundingClientRect();
+  const sx = (lineStart.gx / W) * rect.width * zoom + panX;
+  const sy = (lineStart.gy / H) * rect.height * zoom + panY;
+  const ex = (lineCur.gx / W) * rect.width * zoom + panX;
+  const ey = (lineCur.gy / H) * rect.height * zoom + panY;
+  oCtx.strokeStyle = 'rgba(255,255,255,0.85)';
+  oCtx.lineWidth = Math.max(2, (brushSize * 2 / W) * rect.width * zoom);
+  oCtx.lineCap = 'round';
+  oCtx.setLineDash([6, 6]);
+  oCtx.beginPath(); oCtx.moveTo(sx, sy); oCtx.lineTo(ex, ey); oCtx.stroke();
+  oCtx.setLineDash([]);
+}
+
+function updateTempReadout(gx, gy) {
+  if (gx >= 0 && gx < W && gy >= 0 && gy < H) {
+    document.getElementById('hudTemp').textContent = Math.round(temp[gy * W + gx]) + '°C';
+  }
+}
+
+/* ==================== PRESET SCENES & SAVE SLOTS ==================== */
+function clearGrid() {
+  grid.fill(E.EMPTY); temp.fill(22); meta.fill(0); elec.fill(0);
+}
+
+function drawRect(x0, y0, x1, y1, id, m) {
+  for (let y = Math.max(0, y0); y <= Math.min(H - 1, y1); y++)
+    for (let x = Math.max(0, x0); x <= Math.min(W - 1, x1); x++)
+      setCell(y * W + x, id, m);
+}
+
+function loadPreset(name) {
+  pushUndo();
+  clearGrid();
+  if (name === 'classic') {
+    // Recreates the iconic SmellyMoo screenshot 1-to-1!
+    const cx = (W * 0.62) | 0, cy = (H * 0.28) | 0, bw = (W * 0.34) | 0, bh = (H * 0.32) | 0;
+    // Brick bucket
+    drawRect(cx - bw/2 | 0, cy, (cx - bw/2 | 0) + 4, cy + bh, E.BRICK);
+    drawRect((cx + bw/2 | 0) - 4, cy - 10, cx + bw/2 | 0, cy + bh, E.BRICK);
+    drawRect(cx - bw/2 | 0, cy + bh - 5, cx + bw/2 | 0, cy + bh, E.BRICK);
+    // Metal cup on top-left of bucket
+    drawRect(cx - bw/2 | 0, cy - 18, (cx - bw/2 | 0) + 22, cy - 14, E.METAL);
+    drawRect(cx - bw/2 | 0, cy - 28, (cx - bw/2 | 0) + 4, cy - 14, E.METAL);
+    drawRect((cx - bw/2 | 0) + 18, cy - 28, (cx - bw/2 | 0) + 22, cy - 14, E.METAL);
+    // Oil + Salt inside bucket
+    drawRect((cx - bw/2 | 0) + 5, cy + (bh * 0.45 | 0), (cx + bw/2 | 0) - 5, cy + bh - 6, E.OIL);
+    // 4 Spouts at top (Sand, Water, Oil, Salt)
+    drawRect((W * 0.25) | 0, 2, ((W * 0.25) | 0) + 2, 4, E.CLONE, E.SAND);
+    drawRect((W * 0.41) | 0, 2, ((W * 0.41) | 0) + 2, 4, E.CLONE, E.WATER);
+    drawRect((cx - bw/2 | 0) + 10, 2, (cx - bw/2 | 0) + 12, 4, E.CLONE, E.OIL);
+    drawRect((cx + 8) | 0, 2, (cx + 10) | 0, 4, E.CLONE, E.SALT);
+    // Pre-seed floor pile of water, sand & growing plant
+    drawRect((W * 0.3) | 0, H - 18, W - 2, H - 1, E.WATER);
+    drawRect((W * 0.62) | 0, H - 12, (W * 0.67) | 0, H - 1, E.DIRT);
+    drawRect((W * 0.64) | 0, H - 22, (W * 0.65) | 0, H - 13, E.PLANT);
+    // Small fire spark on oil surface
+    drawRect((cx - 8) | 0, cy + (bh * 0.42 | 0), (cx - 4) | 0, cy + (bh * 0.44 | 0), E.FIRE);
+    showToast('🧱 Загружена классика sand:box!');
+  } else if (name === 'volcano') {
+    const mx = W >> 1;
+    for (let y = (H * 0.42) | 0; y < H; y++) {
+      const span = Math.floor((y - H * 0.42) * 0.65) + 6;
+      drawRect(mx - span, y, mx + span, y, E.STONE);
+    }
+    drawRect(mx - 4, (H * 0.42) | 0, mx + 4, (H * 0.68) | 0, E.EMPTY);
+    drawRect(mx - 4, (H * 0.66) | 0, mx + 4, (H * 0.72) | 0, E.VOLCANO);
+    drawRect(2, H - 28, mx - 38, H - 1, E.WATER);
+    drawRect(mx + 38, H - 28, W - 3, H - 1, E.WATER);
+    showToast('🌋 Вулкан готов к извержению!');
+  } else if (name === 'bomb') {
+    const yMid = (H * 0.65) | 0;
+    drawRect(12, yMid + 14, W - 12, yMid + 20, E.BRICK);
+    drawRect((W * 0.65) | 0, yMid - 14, (W * 0.8) | 0, yMid + 13, E.C4);
+    drawRect((W * 0.5) | 0, yMid - 8, (W * 0.62) | 0, yMid + 13, E.TNT);
+    drawRect((W * 0.16) | 0, yMid + 5, (W * 0.65) | 0, yMid + 7, E.WIRE);
+    drawRect((W * 0.14) | 0, yMid - 12, (W * 0.24) | 0, yMid - 6, E.GLASS);
+    showToast('💣 Поставь Батарею на левый край провода!');
+  } else if (name === 'lab') {
+    const x1 = (W * 0.22) | 0, x2 = (W * 0.78) | 0, y1 = (H * 0.35) | 0, y2 = (H * 0.72) | 0;
+    // Glass flask holding acid over metal grate & bricks
+    drawRect(x1, y1, x1 + 3, y2, E.GLASS);
+    drawRect(x2 - 3, y1, x2, y2, E.GLASS);
+    drawRect(x1, y2 - 3, x2, y2, E.METAL);
+    drawRect(x1 + 4, y1 + 14, x2 - 4, y2 - 4, E.ACID);
+    drawRect(10, H - 22, W - 10, H - 16, E.BRICK);
+    showToast('🧪 Кислота уже разъедает металлическое дно!');
+  }
+  closePopovers();
+}
+
+function renderSaveSlots() {
+  const el = document.getElementById('saveSlots');
+  el.innerHTML = [1, 2, 3].map(slot => {
+    const has = !!localStorage.getItem('sandbox_slot_' + slot);
+    return `<div class="row" style="background:rgba(255,255,255,0.05);padding:7px 10px;border-radius:10px">
+      <span style="font-size:12px;font-weight:700">Слот #${slot} ${has ? '✓' : '(пусто)'}</span>
+      <div style="display:flex;gap:6px">
+        <button class="seg-btn" data-save="${slot}" style="padding:5px 10px">Сохранить</button>
+        <button class="seg-btn" data-load="${slot}" ${has ? '' : 'disabled'} style="padding:5px 10px${has ? '' : ';opacity:0.4'}">Загрузить</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  el.querySelectorAll('[data-save]').forEach(b => b.onclick = () => {
+    const s = b.dataset.save;
+    try {
+      const payload = { w:W, h:H, g:Array.from(grid), m:Array.from(meta) };
+      localStorage.setItem('sandbox_slot_' + s, JSON.stringify(payload));
+      showToast(`💾 Сохранено в Слот #${s}`);
+      renderSaveSlots();
+    } catch { showToast('Не удалось сохранить'); }
+  });
+
+  el.querySelectorAll('[data-load]').forEach(b => b.onclick = () => {
+    const s = b.dataset.load;
+    try {
+      const raw = localStorage.getItem('sandbox_slot_' + s);
+      if (!raw) return;
+      const d = JSON.parse(raw);
+      pushUndo(); clearGrid();
+      const mw = Math.min(W, d.w), mh = Math.min(H, d.h);
+      for (let y = 0; y < mh; y++)
+        for (let x = 0; x < mw; x++) {
+          const si = y * d.w + x, di = y * W + x;
+          if (d.g[si]) setCell(di, d.g[si], d.m[si]);
+        }
+      showToast(`📂 Загружен Слот #${s}`);
+      closePopovers();
+    } catch { showToast('Ошибка загрузки'); }
+  });
+}
+
+/* ==================== PALETTE & UI WIRING ==================== */
+let activeCat = 'all';
+
+function renderPalette() {
+  const g = document.getElementById('paletteGrid');
+  const list = activeCat === 'all' ? PALETTE : PALETTE.filter(p => p.cat === activeCat);
+  g.innerHTML = list.map(p => `
+    <div class="el-tile ${p.id === selectedId ? 'selected' : ''}" data-el="${p.id}" style="background:${p.tile}">
+      ${tileIcon(p.ico)}
+      <span class="t-name">${p.name}</span>
+    </div>`).join('');
+
+  g.querySelectorAll('.el-tile').forEach(tile => {
+    tile.onclick = () => {
+      SFX.unlock();
+      selectedId = +tile.dataset.el;
+      updateSelectedHUD();
+      g.querySelectorAll('.el-tile').forEach(t => t.classList.toggle('selected', +t.dataset.el === selectedId));
+    };
+  });
+}
+
+function updateSelectedHUD() {
+  const p = PALETTE_MAP[selectedId];
+  if (!p) return;
+  document.getElementById('hudName').textContent = p.name;
+  document.getElementById('hudDesc').textContent = p.desc;
+  document.getElementById('hudSwatch').style.background = p.sw;
+}
+
+document.querySelectorAll('.cat-chip').forEach(ch => ch.onclick = () => {
+  activeCat = ch.dataset.cat;
+  document.querySelectorAll('.cat-chip').forEach(c => c.classList.toggle('active', c === ch));
+  document.getElementById('paletteWrap').scrollLeft = 0;
+  renderPalette();
+});
+
+// Top bar buttons
+document.getElementById('btnPlay').onclick = function() {
+  paused = !paused;
+  this.innerHTML = paused ? '▶ <span class="lbl">Старт</span>' : '⏸ <span class="lbl">Пауза</span>'; 
+  this.classList.toggle('active', paused);
+};
+
+document.getElementById('btnSpeed').onclick = function() {
+  speed = speed === 1 ? 2 : speed === 2 ? 4 : 1;
+  this.innerHTML = `⏩<span>${speed}× скорость</span>`;
+  this.classList.toggle('active', speed > 1);
+};
+
+document.getElementById('btnLine').onclick = function() {
+  brushMode = brushMode === 'line' ? 'circle' : 'line';
+  syncBrushModeUI();
+};
+
+document.getElementById('btnHeat').onclick = function() {
+  heatVision = !heatVision;
+  this.classList.toggle('heat-on', heatVision);
+  this.classList.toggle('active', heatVision);
+  showToast(heatVision ? '🌡 Тепловизор ВКЛ' : '🌡 Обычный вид');
+};
+
+document.getElementById('btnUndo').onclick = doUndo;
+
+document.getElementById('btnSound').onclick = function() {
+  SFX.on = !SFX.on;
+  this.innerHTML = `${SFX.on ? '🔊' : '🔇'}<span>Звук: ${SFX.on ? 'вкл' : 'выкл'}</span>`;
+};
+
+let clearConfirm = 0;
+document.getElementById('btnClear').onclick = () => {
+  const now = performance.now();
+  if (now - clearConfirm < 2000) {
+    pushUndo();
+    clearGrid();
+    showToast('🧹 Холст очищен');
+    clearConfirm = 0;
+  } else {
+    clearConfirm = now;
+    showToast('Нажми 🗑 ещё раз для очистки');
+  }
+};
+
+document.getElementById('btnResetZoom').onclick = () => {
+  zoom = 1; panX = 0; panY = 0; applyViewTransform();
+};
+
+function closePopovers() {
+  document.querySelectorAll('.popover').forEach(p => p.classList.remove('open'));
+}
+document.querySelectorAll('[data-close]').forEach(b => b.onclick = closePopovers);
+
+document.getElementById('btnMenu').onclick = () => {
+  const pop = document.getElementById('popMenu');
+  const open = !pop.classList.contains('open');
+  closePopovers();
+  if (open) pop.classList.add('open');
+};
+
+document.getElementById('btnScenes').onclick = () => {
+  const pop = document.getElementById('popScenes');
+  const open = !pop.classList.contains('open');
+  closePopovers();
+  if (open) { renderSaveSlots(); pop.classList.add('open'); }
+};
+
+function syncBrushModeUI() {
+  document.getElementById('btnLine').classList.toggle('active', brushMode === 'line');
+}
+
+function orientationGravity() {
+  const angle = (screen.orientation && typeof screen.orientation.angle === 'number') ? screen.orientation.angle : (window.orientation || 0);
+  const norm = ((angle % 360) + 360) % 360;
+  gravityDir = (norm >= 45 && norm < 135) ? -2 : (norm >= 225 && norm < 315) ? 2 : 1;
+}
+let motionAccessRequested = false;
+let motionSensorReady = false;
+function applyDeviceTilt(e) {
+  if (e.beta == null || e.gamma == null) return;
+  const gx = Math.sin(e.gamma * Math.PI / 180);
+  const gy = Math.sin(e.beta * Math.PI / 180);
+  if (Math.abs(gx) > 0.58 && Math.abs(gx) > Math.abs(gy) * 0.88) gravityDir = gx > 0 ? 2 : -2;
+  else if (Math.abs(gy) > 0.58) gravityDir = gy > 0 ? 1 : -1;
+}
+function startMotionSensor() {
+  if (motionAccessRequested) return;
+  motionAccessRequested = true;
+  const DO = window.DeviceOrientationEvent;
+  const attach = () => {
+    window.addEventListener('deviceorientation', applyDeviceTilt, { passive:true });
+    motionSensorReady = true;
+    showToast('📱 Наклоняй телефон — песок потечёт вслед');
+  };
+  if (DO && typeof DO.requestPermission === 'function') {
+    DO.requestPermission().then(state => {
+      if (state === 'granted') attach();
+      else showToast('Нужно разрешить датчик наклона');
+    }).catch(() => showToast('Датчик наклона не разрешён'));
+  } else if (DO) attach();
+}
+function onViewportChange() {
+  const rect = stageWrap.getBoundingClientRect();
+  // Keep the simulation grid and all drawn pixels exactly the same size on rotation.
+  // Only the transparent overlay follows the viewport; gravity can still track orientation.
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  oCanvas.width = Math.round(rect.width*dpr); oCanvas.height = Math.round(rect.height*dpr);
+  oCtx.setTransform(dpr,0,0,dpr,0,0);
+  if (!motionSensorReady) orientationGravity();
+  clampPan(); applyViewTransform();
+}
+window.addEventListener('resize', onViewportChange, {passive:true});
+window.addEventListener('orientationchange', () => setTimeout(onViewportChange,120), {passive:true});
+if (screen.orientation && screen.orientation.addEventListener) screen.orientation.addEventListener('change', onViewportChange);
+
+document.querySelectorAll('[data-preset]').forEach(b => b.onclick = () => loadPreset(b.dataset.preset));
+
+let toastTimer;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 1900);
+}
+
+/* ==================== MAIN LOOP ==================== */
+function loop() {
+  if (!paused) {
+    for (let s = 0; s < speed; s++) stepSim();
+  }
+  renderSim();
+  requestAnimationFrame(loop);
+}
+
+initDimensions();
+orientationGravity();
+renderPalette();
+updateSelectedHUD();
+clearGrid(); // Start with a completely empty canvas; scenes are optional.
+requestAnimationFrame(loop);
+})();
+</script>
+<script>
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
+}
+</script>
+</body>
+</html>
